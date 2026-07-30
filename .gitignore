@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Runtime data
+backend/notes/
+backend/logs/
+backend/cache/
+workspace/
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
