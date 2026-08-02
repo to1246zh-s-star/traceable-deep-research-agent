@@ -28,6 +28,9 @@ class PlanningService:
         self._agent = planner_agent
         self._config = config
         self.last_parse_status = "unknown"
+        self.retry_count = 0
+        self.max_retries = 1
+        self.retry_reason = None
 
     def plan_todo_list(self, state: SummaryState) -> List[TodoItem]:
         """Ask the planner agent to break the topic into actionable tasks."""
@@ -43,6 +46,51 @@ class PlanningService:
         logger.info("Planner raw output (truncated): %s", response[:500])
 
         tasks_payload = self._extract_tasks(response)
+
+        if (
+            self.last_parse_status in {
+                "empty_output",
+                "json_error",
+                "invalid_schema",
+            }
+            and self.retry_count < self.max_retries
+        ):
+            logger.info(
+                "Planner returned %s; retrying once",
+                self.last_parse_status,
+            )
+
+            self.retry_count += 1
+            self.retry_reason = self.last_parse_status
+
+            retry_prompt = prompt
+
+            if self.last_parse_status == "invalid_schema":
+                retry_prompt = (
+                    prompt
+                    + "\n\n"
+                    + "Your previous response violated the required schema. "
+                    + "Return only valid JSON. "
+                    + "The output must contain a tasks array. "
+                    + "Do not change the JSON structure."
+                )
+
+            elif self.last_parse_status == "json_error":
+                retry_prompt = (
+                    prompt
+                    + "\n\n"
+                    + "Your previous response was not valid JSON. "
+                    + "Return only valid JSON. "
+                    + "Do not include explanations or markdown."
+                )
+
+            response = self._agent.run(retry_prompt)
+            self._agent.clear_history()
+
+            logger.info("Planner retry raw output (truncated): %s", response[:500])
+
+            tasks_payload = self._extract_tasks(response)
+
         todo_items: List[TodoItem] = []
 
         for idx, item in enumerate(tasks_payload, start=1):
