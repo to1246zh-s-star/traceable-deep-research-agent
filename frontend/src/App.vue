@@ -268,7 +268,10 @@
               :class="{ 'block-highlight': summaryHighlight }"
             >
               <h3>任务总结</h3>
-              <pre class="block-pre">{{ currentTaskSummary || "暂无可用信息" }}</pre>
+              <div
+                class="markdown-body"
+                v-html="renderMarkdown(currentTaskSummary || '暂无可用信息')"
+              ></div>
             </section>
 
             <section
@@ -281,36 +284,42 @@
                 <li
                   v-for="entry in currentTaskToolCalls"
                   :key="`${entry.eventId}-${entry.timestamp}`"
-                  class="tool-entry"
                 >
-                  <div class="tool-entry-header">
-                    <span class="tool-entry-title">
-                      #{{ entry.eventId }} {{ entry.agent }} → {{ entry.tool }}
-                    </span>
-                    <span
-                      v-if="entry.noteId"
-                      class="tool-entry-note"
-                    >
-                      笔记：{{ entry.noteId }}
-                    </span>
-                  </div>
-                  <p v-if="entry.notePath" class="tool-entry-path">
-                    笔记路径：
-                    <button
-                      class="link-btn"
-                      type="button"
-                      @click="copyNotePath(entry.notePath)"
-                    >
-                      复制
-                    </button>
-                    <span class="path-text">{{ entry.notePath }}</span>
-                  </p>
-                  <p class="tool-subtitle">参数</p>
-                  <pre class="tool-pre">{{ formatToolParameters(entry.parameters) }}</pre>
-                  <template v-if="entry.result">
-                    <p class="tool-subtitle">执行结果</p>
-                    <pre class="tool-pre">{{ formatToolResult(entry.result) }}</pre>
-                  </template>
+                  <details class="tool-entry">
+                    <summary class="tool-entry-summary">
+                      <span class="tool-entry-title">
+                        #{{ entry.eventId }} {{ entry.agent }} → {{ entry.tool }}
+                      </span>
+                      <span
+                        v-if="entry.noteId"
+                        class="tool-entry-note"
+                      >
+                        笔记：{{ entry.noteId }}
+                      </span>
+                    </summary>
+
+                    <div class="tool-entry-content">
+                      <p v-if="entry.notePath" class="tool-entry-path">
+                        笔记路径：
+                        <button
+                          class="link-btn"
+                          type="button"
+                          @click.stop="copyNotePath(entry.notePath)"
+                        >
+                          复制
+                        </button>
+                        <span class="path-text">{{ entry.notePath }}</span>
+                      </p>
+
+                      <p class="tool-subtitle">参数</p>
+                      <pre class="tool-pre">{{ formatToolParameters(entry.parameters) }}</pre>
+
+                      <template v-if="entry.result">
+                        <p class="tool-subtitle">执行结果</p>
+                        <pre class="tool-pre">{{ formatToolResult(entry.result) }}</pre>
+                      </template>
+                    </div>
+                  </details>
                 </li>
               </ul>
             </section>
@@ -327,7 +336,10 @@
           :class="{ 'block-highlight': reportHighlight }"
         >
           <h3>最终报告</h3>
-          <pre class="block-pre">{{ reportMarkdown }}</pre>
+          <div
+            class="markdown-body"
+            v-html="renderMarkdown(reportMarkdown)"
+          ></div>
         </div>
       </section>
 
@@ -337,11 +349,27 @@
 
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, reactive, ref } from "vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 import {
   runResearchStream,
   type ResearchStreamEvent
 } from "./services/api";
+
+marked.setOptions({
+  gfm: true,
+  breaks: true
+});
+
+const renderMarkdown = (content: string): string => {
+  if (!content) {
+    return "";
+  }
+
+  const html = marked.parse(content) as string;
+  return DOMPurify.sanitize(html);
+};
 
 interface SourceItem {
   title: string;
@@ -2300,5 +2328,119 @@ select:focus {
   .layout-fullscreen .panel-result {
     height: 60vh;
   }
+}
+</style>
+
+<style scoped>
+.markdown-body {
+  line-height: 1.75;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 1.1em 0 0.55em;
+  line-height: 1.35;
+}
+
+.markdown-body :deep(h1) {
+  font-size: 1.5rem;
+}
+
+.markdown-body :deep(h2) {
+  font-size: 1.3rem;
+}
+
+.markdown-body :deep(h3) {
+  font-size: 1.15rem;
+}
+
+.markdown-body :deep(p) {
+  margin: 0.7em 0;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0.7em 0;
+  padding-left: 1.6em;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 0.8em 0;
+  padding: 0.65em 1em;
+  border-left: 4px solid #818cf8;
+  background: #f8fafc;
+}
+
+.markdown-body :deep(code) {
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: #eef2ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.markdown-body :deep(pre) {
+  overflow-x: auto;
+  padding: 1em;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.markdown-body :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
+}
+</style>
+
+<style scoped>
+.tool-entry {
+  padding: 0;
+  overflow: hidden;
+}
+
+.tool-entry-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.tool-entry-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-entry-summary::after {
+  content: "▾";
+  margin-left: auto;
+  font-size: 12px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.tool-entry[open] .tool-entry-summary::after {
+  transform: rotate(180deg);
+}
+
+.tool-entry[open] .tool-entry-summary {
+  background: rgba(224, 231, 255, 0.45);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.tool-entry-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.tool-entry-summary:hover {
+  background: rgba(238, 242, 255, 0.7);
 }
 </style>

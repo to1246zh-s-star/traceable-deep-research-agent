@@ -26,3 +26,25 @@ workspace/
 .vscode/
 .idea/
 .DS_Store
+
+# Local development backups
+*.bak
+*.backup
+*.before_*
+*.before-*
+*~ 
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local Python version selector
+.python-version
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+coverage.xml
+
+# Frontend build/cache artifacts
+frontend/.vite/
+frontend/dist/

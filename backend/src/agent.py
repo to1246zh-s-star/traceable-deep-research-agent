@@ -6,7 +6,7 @@ import logging
 import re
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Lock, Thread
+from threading import Lock, Semaphore, Thread
 from typing import Any, Callable, Iterator
 
 from hello_agents import HelloAgentsLLM, ToolAwareSimpleAgent
@@ -133,7 +133,8 @@ class DeepResearchAgent:
             state.todo_items = [self.planner.create_fallback_task(state)]
 
         for task in state.todo_items:
-            self._execute_task(state, task, emit_stream=False)
+            for _ in self._execute_task(state, task, emit_stream=False):
+                pass
 
         report = self.reporting.generate_report(state)
         self._drain_tool_events(state)
@@ -199,6 +200,7 @@ class DeepResearchAgent:
         self._set_tool_event_sink(tool_event_sink)
 
         threads: list[Thread] = []
+        task_semaphore = Semaphore(2)
 
         def worker(task: TodoItem, step: int) -> None:
             try:
@@ -235,9 +237,13 @@ class DeepResearchAgent:
             finally:
                 enqueue({"type": "__task_done__", "task_id": task.id})
 
+        def limited_worker(task: TodoItem, step: int) -> None:
+            with task_semaphore:
+                worker(task, step)
+
         for task in state.todo_items:
             step = channel_map.get(task.id, {}).get("step", 0)
-            thread = Thread(target=worker, args=(task, step), daemon=True)
+            thread = Thread(target=limited_worker, args=(task, step), daemon=True)
             threads.append(thread)
             thread.start()
 
@@ -376,24 +382,55 @@ class DeepResearchAgent:
             try:
                 for event in self._drain_tool_events(state, step=step):
                     yield event
+                chunk_buffer = ""
+                chunk_size = 160
+
                 for chunk in summary_stream:
                     if chunk:
+                        chunk_buffer += chunk
+
+                    while len(chunk_buffer) >= chunk_size:
+                        content = chunk_buffer[:chunk_size]
+                        chunk_buffer = chunk_buffer[chunk_size:]
+
                         yield {
                             "type": "task_summary_chunk",
                             "task_id": task.id,
-                            "content": chunk,
+                            "content": content,
                             "note_id": task.note_id,
                             "step": step,
                         }
+
                     for event in self._drain_tool_events(state, step=step):
                         yield event
+
+                # 模型流结束后发送不足 chunk_size 的剩余内容
+                if chunk_buffer:
+                    yield {
+                        "type": "task_summary_chunk",
+                        "task_id": task.id,
+                        "content": chunk_buffer,
+                        "note_id": task.note_id,
+                        "step": step,
+                    }
             finally:
                 summary_text = summary_getter()
         else:
             summary_text = self.summarizer.summarize_task(state, task, context)
             self._drain_tool_events(state)
 
-        task.summary = summary_text.strip() if summary_text else "暂无可用信息"
+        if not self.summarizer.is_valid_summary(summary_text):
+            logger.warning(
+                "Invalid task summary detected; retrying once: task_id=%s",
+                task.id,
+            )
+            summary_text = self.summarizer.summarize_task(state, task, context)
+
+        if self.summarizer.is_valid_summary(summary_text):
+            task.summary = summary_text.strip()
+        else:
+            task.summary = "暂无可用信息：模型未返回有效的任务总结。"
+
         task.status = "completed"
 
         if emit_stream:

@@ -15,6 +15,25 @@ export interface StreamOptions {
   signal?: AbortSignal;
 }
 
+function parseSseBlock(rawBlock: string): ResearchStreamEvent | null {
+  const dataLines = rawBlock
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart());
+
+  if (!dataLines.length) {
+    return null;
+  }
+
+  const payload = dataLines.join("\n").trim();
+
+  if (!payload) {
+    return null;
+  }
+
+  return JSON.parse(payload) as ResearchStreamEvent;
+}
+
 export async function runResearchStream(
   payload: ResearchRequest,
   onEvent: (event: ResearchStreamEvent) => void,
@@ -37,58 +56,66 @@ export async function runResearchStream(
     );
   }
 
-  const body = response.body;
-  if (!body) {
+  if (!response.body) {
     throw new Error("浏览器不支持流式响应，无法获取研究进度");
   }
 
-  const reader = body.getReader();
+  const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 
+  const dispatchBlock = (rawBlock: string): boolean => {
+    const trimmed = rawBlock.trim();
+
+    if (!trimmed) {
+      return false;
+    }
+
+    try {
+      const event = parseSseBlock(trimmed);
+
+      if (!event) {
+        return false;
+      }
+
+      onEvent(event);
+
+      return event.type === "error" || event.type === "done";
+    } catch (error) {
+      console.error("解析流式事件失败：", error, trimmed);
+      return false;
+    }
+  };
+
   while (true) {
     const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    buffer += decoder.decode(
+      value || new Uint8Array(),
+      { stream: !done }
+    );
+
+    // 统一处理 Windows/代理可能产生的 CRLF。
+    buffer = buffer.replace(/\r\n/g, "\n");
 
     let boundary = buffer.indexOf("\n\n");
+
     while (boundary !== -1) {
-      const rawEvent = buffer.slice(0, boundary).trim();
+      const rawBlock = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
 
-      if (rawEvent.startsWith("data:")) {
-        const dataPayload = rawEvent.slice(5).trim();
-        if (dataPayload) {
-          try {
-            const event = JSON.parse(dataPayload) as ResearchStreamEvent;
-            onEvent(event);
-
-            if (event.type === "error" || event.type === "done") {
-              return;
-            }
-          } catch (error) {
-            console.error("解析流式事件失败：", error, dataPayload);
-          }
-        }
+      if (dispatchBlock(rawBlock)) {
+        await reader.cancel().catch(() => undefined);
+        return;
       }
 
       boundary = buffer.indexOf("\n\n");
     }
 
     if (done) {
-      // 处理可能的尾巴事件
+      // 处理没有以空行结尾的最后一个 SSE 事件。
       if (buffer.trim()) {
-        const rawEvent = buffer.trim();
-        if (rawEvent.startsWith("data:")) {
-          const dataPayload = rawEvent.slice(5).trim();
-          if (dataPayload) {
-            try {
-              const event = JSON.parse(dataPayload) as ResearchStreamEvent;
-              onEvent(event);
-            } catch (error) {
-              console.error("解析流式事件失败：", error, dataPayload);
-            }
-          }
-        }
+        dispatchBlock(buffer);
       }
       break;
     }

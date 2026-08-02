@@ -17,6 +17,15 @@ from services.text_processing import strip_tool_calls
 class SummarizationService:
     """Handles synchronous and streaming task summarization."""
 
+    INVALID_SUMMARY_MARKERS = (
+        "🔧 工具",
+        "工具 note 执行结果",
+        "笔记创建成功",
+        "笔记更新成功",
+        "请基于这些结果给出完整的回答",
+        "暂无可用信息",
+    )
+
     def __init__(
         self,
         summarizer_factory: Callable[[], ToolAwareSimpleAgent],
@@ -43,6 +52,22 @@ class SummarizationService:
         summary_text = strip_tool_calls(summary_text).strip()
 
         return summary_text or "暂无可用信息"
+
+    def is_valid_summary(self, text: str | None) -> bool:
+        """判断模型输出是否为可展示的任务总结。"""
+
+        if not text:
+            return False
+
+        cleaned = text.strip()
+
+        if len(cleaned) < 120:
+            return False
+
+        if any(marker in cleaned for marker in self.INVALID_SUMMARY_MARKERS):
+            return False
+
+        return True
 
     def stream_task_summary(
         self, state: SummaryState, task: TodoItem, context: str
