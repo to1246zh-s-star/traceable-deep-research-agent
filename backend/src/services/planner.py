@@ -30,7 +30,16 @@ class PlanningService:
         self.last_parse_status = "unknown"
         self.retry_count = 0
         self.max_retries = 1
+
+        self.stats = {
+            "calls": 0,
+            "retry_count": 0,
+            "failures": 0,
+            "retry_reason": None,
+            "final_status": "unknown",
+        }
         self.retry_reason = None
+        self.final_parse_status = "unknown"
 
     def plan_todo_list(self, state: SummaryState) -> List[TodoItem]:
         """Ask the planner agent to break the topic into actionable tasks."""
@@ -39,6 +48,8 @@ class PlanningService:
             current_date=get_current_date(),
             research_topic=state.research_topic,
         )
+
+        self.stats["calls"] += 1
 
         response = self._agent.run(prompt)
         self._agent.clear_history()
@@ -52,6 +63,7 @@ class PlanningService:
                 "empty_output",
                 "json_error",
                 "invalid_schema",
+                "invalid_task_schema",
             }
             and self.retry_count < self.max_retries
         ):
@@ -61,6 +73,7 @@ class PlanningService:
             )
 
             self.retry_count += 1
+            self.stats["retry_count"] += 1
             self.retry_reason = self.last_parse_status
 
             retry_prompt = prompt
@@ -83,6 +96,17 @@ class PlanningService:
                     + "Return only valid JSON. "
                     + "Do not include explanations or markdown."
                 )
+
+            elif self.last_parse_status == "invalid_task_schema":
+                retry_prompt = (
+                    prompt
+                    + "\n\n"
+                    + "Your previous response contained invalid task fields. "
+                    + "Every task must contain non-empty title, intent and query. "
+                    + "Return only valid JSON."
+                )
+
+            self.stats["calls"] += 1
 
             response = self._agent.run(retry_prompt)
             self._agent.clear_history()
@@ -111,8 +135,24 @@ class PlanningService:
 
         state.todo_items = todo_items
 
+        if todo_items:
+            self.final_parse_status = "success"
+        elif self.retry_count > 0:
+            self.final_parse_status = "retry_failed"
+        else:
+            self.final_parse_status = self.last_parse_status
+
         titles = [task.title for task in todo_items]
         logger.info("Planner produced %d tasks: %s", len(todo_items), titles)
+
+
+        if todo_items:
+            self.stats["final_status"] = "success"
+        else:
+            self.stats["final_status"] = self.final_parse_status
+
+            if self.final_parse_status == "retry_failed":
+                self.stats["failures"] += 1
         return todo_items
 
     @staticmethod
@@ -151,6 +191,10 @@ class PlanningService:
             if isinstance(candidate, list):
                 for item in candidate:
                     if isinstance(item, dict):
+                        if not self._is_valid_task_item(item):
+                            self.last_parse_status = "invalid_task_schema"
+                            return []
+
                         tasks.append(item)
 
             elif "tasks" in json_payload:
@@ -168,6 +212,33 @@ class PlanningService:
                         tasks.append(item)
 
         return tasks
+
+    def _is_valid_task_item(self, item: dict[str, Any]) -> bool:
+        """Validate planner task schema."""
+
+        title = item.get("title")
+        intent = item.get("intent")
+        query = item.get("query")
+
+        if not isinstance(title, str):
+            return False
+
+        if not isinstance(intent, str):
+            return False
+
+        if not isinstance(query, str):
+            return False
+
+        if not title.strip():
+            return False
+
+        if not intent.strip():
+            return False
+
+        if not query.strip():
+            return False
+
+        return True
 
     def _extract_json_payload(self, text: str) -> Optional[dict[str, Any] | list]:
         """Try to locate and parse a JSON object or array from the text."""
