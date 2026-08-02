@@ -27,6 +27,7 @@ class PlanningService:
     def __init__(self, planner_agent: ToolAwareSimpleAgent, config: Configuration) -> None:
         self._agent = planner_agent
         self._config = config
+        self.last_parse_status = "unknown"
 
     def plan_todo_list(self, state: SummaryState) -> List[TodoItem]:
         """Ask the planner agent to break the topic into actionable tasks."""
@@ -83,7 +84,13 @@ class PlanningService:
     def _extract_tasks(self, raw_response: str) -> List[dict[str, Any]]:
         """Parse planner output into a list of task dictionaries."""
 
+        self.last_parse_status = "unknown"
+
         text = raw_response.strip()
+
+        if not text:
+            self.last_parse_status = "empty_output"
+            return []
         if self._config.strip_thinking_tokens:
             text = strip_thinking_tokens(text)
 
@@ -92,10 +99,14 @@ class PlanningService:
 
         if isinstance(json_payload, dict):
             candidate = json_payload.get("tasks")
+
             if isinstance(candidate, list):
                 for item in candidate:
                     if isinstance(item, dict):
                         tasks.append(item)
+
+            elif "tasks" in json_payload:
+                self.last_parse_status = "invalid_schema"
         elif isinstance(json_payload, list):
             for item in json_payload:
                 if isinstance(item, dict):
@@ -120,7 +131,7 @@ class PlanningService:
             try:
                 return json.loads(candidate)
             except json.JSONDecodeError:
-                pass
+                self.last_parse_status = "json_error"
 
         start = text.find("[")
         end = text.rfind("]")
@@ -129,6 +140,7 @@ class PlanningService:
             try:
                 return json.loads(candidate)
             except json.JSONDecodeError:
+                self.last_parse_status = "json_error"
                 return None
 
         return None
