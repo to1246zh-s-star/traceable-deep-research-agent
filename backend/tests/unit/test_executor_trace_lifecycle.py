@@ -75,3 +75,86 @@ def test_empty_search_result_records_skipped_execution_trace(monkeypatch) -> Non
     assert trace.duration_ms >= 0
     assert trace.error_type is None
     assert trace.error_message is None
+
+
+class DummySummarizer:
+    def summarize_task(self, state, task, context):
+        return "Valid summary content."
+
+    def is_valid_summary(self, summary):
+        return bool(summary and summary.strip())
+
+
+def test_successful_task_records_completed_execution_trace(monkeypatch) -> None:
+    def fake_dispatch_search(query, config, loop_count):
+        return (
+            {
+                "results": [
+                    {
+                        "title": "Example source",
+                        "url": "https://example.com",
+                        "content": "Example evidence",
+                    }
+                ],
+                "backend": "fake",
+                "answer": None,
+                "notices": [],
+            },
+            [],
+            None,
+            "fake",
+        )
+
+    def fake_prepare_research_context(search_result, answer_text, config):
+        return (
+            "Example source summary",
+            "Example research context",
+        )
+
+    monkeypatch.setattr(
+        agent_module,
+        "dispatch_search",
+        fake_dispatch_search,
+    )
+    monkeypatch.setattr(
+        agent_module,
+        "prepare_research_context",
+        fake_prepare_research_context,
+    )
+
+    research_agent = build_test_agent()
+    research_agent.summarizer = DummySummarizer()
+
+    state = SummaryState(research_topic="Test topic")
+    task = TodoItem(
+        id=2,
+        title="Successful task",
+        intent="Test completed executor trace",
+        query="successful query",
+    )
+    state.todo_items = [task]
+
+    events = list(
+        research_agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
+        )
+    )
+
+    assert events == []
+    assert task.status == "completed"
+    assert task.summary == "Valid summary content."
+
+    assert len(state.execution_traces) == 1
+
+    trace = state.execution_traces[0]
+    assert trace.task_id == task.id
+    assert trace.status == "completed"
+    assert trace.current_stage == "summarization"
+    assert trace.started_at is not None
+    assert trace.finished_at is not None
+    assert trace.duration_ms is not None
+    assert trace.duration_ms >= 0
+    assert trace.error_type is None
+    assert trace.error_message is None

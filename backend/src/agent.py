@@ -381,6 +381,7 @@ class DeepResearchAgent:
             state.research_loop_count += 1
 
         summary_text: str | None = None
+        trace.current_stage = "summarization"
 
         if emit_stream:
             for event in self._drain_tool_events(state, step=step):
@@ -450,6 +451,9 @@ class DeepResearchAgent:
             task.summary = "暂无可用信息：模型未返回有效的任务总结。"
 
         task.status = "completed"
+        trace.status = "completed"
+        trace.finished_at = datetime.now(timezone.utc).isoformat()
+        trace.duration_ms = (perf_counter() - started_counter) * 1000
 
         if emit_stream:
             for event in self._drain_tool_events(state, step=step):
