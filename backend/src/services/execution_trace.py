@@ -14,6 +14,67 @@ class ExecutionTraceService:
     def __init__(self, *, lock: Lock) -> None:
         self._lock = lock
 
+    def get_events(
+        self,
+        state: SummaryState,
+        *,
+        task_id: int | None = None,
+        event_type: str | None = None,
+    ) -> list:
+        """Query execution event history with optional filters."""
+
+        with self._lock:
+            events = list(state.execution_event_history)
+
+        if task_id is not None:
+            events = [
+                event
+                for event in events
+                if event.task_id == task_id
+            ]
+
+        if event_type is not None:
+            events = [
+                event
+                for event in events
+                if event.event_type == event_type
+            ]
+
+        return events
+
+    def summarize_events(
+        self,
+        state: SummaryState,
+    ) -> dict[str, Any]:
+        """Summarize execution event history."""
+
+        with self._lock:
+            events = list(state.execution_event_history)
+
+        event_counts: dict[str, int] = {}
+
+        for event in events:
+            event_counts[event.event_type] = (
+                event_counts.get(event.event_type, 0) + 1
+            )
+
+        return {
+            "total_events": len(events),
+            "completed_tasks": event_counts.get(
+                "task_completed",
+                0,
+            ),
+            "failed_tasks": event_counts.get(
+                "task_failed",
+                0,
+            ),
+            "skipped_tasks": event_counts.get(
+                "task_skipped",
+                0,
+            ),
+            "event_counts": event_counts,
+        }
+
     def get_trace(
         self,
         state: SummaryState,

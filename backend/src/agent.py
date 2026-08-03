@@ -362,24 +362,11 @@ class DeepResearchAgent:
     ) -> list[ExecutionEvent]:
         """Query execution event history with optional filters."""
 
-        with self._state_lock:
-            events = list(state.execution_event_history)
-
-        if task_id is not None:
-            events = [
-                event
-                for event in events
-                if event.task_id == task_id
-            ]
-
-        if event_type is not None:
-            events = [
-                event
-                for event in events
-                if event.event_type == event_type
-            ]
-
-        return events
+        return self._get_execution_trace_service().get_events(
+            state,
+            task_id=task_id,
+            event_type=event_type,
+        )
 
     def _get_execution_trace_service(self) -> ExecutionTraceService:
         """Return the trace service, creating it for lightweight test agents."""
@@ -424,32 +411,9 @@ class DeepResearchAgent:
     ) -> dict[str, Any]:
         """Summarize execution event history."""
 
-        with self._state_lock:
-            events = list(state.execution_event_history)
-
-        event_counts: dict[str, int] = {}
-
-        for event in events:
-            event_counts[event.event_type] = (
-                event_counts.get(event.event_type, 0) + 1
-            )
-
-        return {
-            "total_events": len(events),
-            "completed_tasks": event_counts.get(
-                "task_completed",
-                0,
-            ),
-            "failed_tasks": event_counts.get(
-                "task_failed",
-                0,
-            ),
-            "skipped_tasks": event_counts.get(
-                "task_skipped",
-                0,
-            ),
-            "event_counts": event_counts,
-        }
+        return self._get_execution_trace_service().summarize_events(
+            state,
+        )
 
     def _finish_execution_trace(
         self,
