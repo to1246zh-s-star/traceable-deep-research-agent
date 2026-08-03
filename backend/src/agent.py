@@ -21,7 +21,13 @@ from prompts import (
     task_summarizer_instructions,
     todo_planner_system_prompt,
 )
-from models import ExecutionTrace, SummaryState, SummaryStateOutput, TodoItem
+from models import (
+    ExecutionEvent,
+    ExecutionTrace,
+    SummaryState,
+    SummaryStateOutput,
+    TodoItem,
+)
 from services.execution_errors import classify_execution_error
 from services.planner import PlanningService
 from services.reporter import ReportingService
@@ -295,6 +301,27 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Execution helpers
     # ------------------------------------------------------------------
+    def _emit_execution_event(
+        self,
+        state: SummaryState,
+        *,
+        task_id: int,
+        event_type: str,
+        stage: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a runtime execution event."""
+
+        event = ExecutionEvent(
+            task_id=task_id,
+            event_type=event_type,
+            stage=stage,
+            metadata=metadata or {},
+        )
+
+        with self._state_lock:
+            state.execution_events.append(event)
+
     def _finish_execution_trace(
         self,
         trace: ExecutionTrace,
@@ -327,6 +354,13 @@ class DeepResearchAgent:
         """Run search + summarization for a single task."""
         task.status = "in_progress"
 
+        self._emit_execution_event(
+            state,
+            task_id=task.id,
+            event_type="task_started",
+            stage="executor",
+        )
+
         started_at = datetime.now(timezone.utc)
         started_counter = perf_counter()
         trace = ExecutionTrace(
@@ -340,13 +374,46 @@ class DeepResearchAgent:
             state.execution_traces.append(trace)
 
         try:
+            self._emit_execution_event(
+                state,
+                task_id=task.id,
+                event_type="search_started",
+                stage="search",
+            )
+
             search_result, notices, answer_text, backend = dispatch_search(
                 task.query,
                 self.config,
                 state.research_loop_count,
             )
+
+            self._emit_execution_event(
+                state,
+                task_id=task.id,
+                event_type="search_finished",
+                stage="search",
+                metadata={
+                    "backend": backend,
+                    "sources": len(
+                        search_result.get("results", [])
+                    )
+                    if search_result
+                    else 0,
+                },
+            )
         except Exception as exc:
             task.status = "failed"
+
+            self._emit_execution_event(
+                state,
+                task_id=task.id,
+                event_type="task_failed",
+                stage="search",
+                metadata={
+                    "error_type": classify_execution_error(exc),
+                },
+            )
+
             self._finish_execution_trace(
                 trace,
                 status="failed",
@@ -375,6 +442,17 @@ class DeepResearchAgent:
 
         if not search_result or not search_result.get("results"):
             task.status = "skipped"
+
+            self._emit_execution_event(
+                state,
+                task_id=task.id,
+                event_type="task_skipped",
+                stage="search",
+                metadata={
+                    "reason": "empty_search_result",
+                },
+            )
+
             self._finish_execution_trace(
                 trace,
                 status="skipped",
@@ -416,6 +494,13 @@ class DeepResearchAgent:
 
         summary_text: str | None = None
         trace.current_stage = "summarization"
+
+        self._emit_execution_event(
+            state,
+            task_id=task.id,
+            event_type="summarization_started",
+            stage="summarization",
+        )
 
         try:
             if emit_stream:
@@ -486,6 +571,17 @@ class DeepResearchAgent:
                 task.summary = "暂无可用信息：模型未返回有效的任务总结。"
         except Exception as exc:
             task.status = "failed"
+
+            self._emit_execution_event(
+                state,
+                task_id=task.id,
+                event_type="task_failed",
+                stage="summarization",
+                metadata={
+                    "error_type": classify_execution_error(exc),
+                },
+            )
+
             self._finish_execution_trace(
                 trace,
                 status="failed",
@@ -500,6 +596,16 @@ class DeepResearchAgent:
             trace,
             status="completed",
             started_counter=started_counter,
+        )
+
+        self._emit_execution_event(
+            state,
+            task_id=task.id,
+            event_type="task_completed",
+            stage="executor",
+            metadata={
+                "status": task.status,
+            },
         )
 
         if emit_stream:
