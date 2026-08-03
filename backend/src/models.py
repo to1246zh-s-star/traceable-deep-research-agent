@@ -25,6 +25,21 @@ class TodoItem:
 
 
 @dataclass(kw_only=True)
+class ExecutionTrace:
+    """Runtime trace for a single TODO task execution."""
+
+    task_id: int
+    status: str = field(default="pending")
+    started_at: Optional[str] = field(default=None)
+    finished_at: Optional[str] = field(default=None)
+    duration_ms: Optional[float] = field(default=None)
+    current_stage: Optional[str] = field(default=None)
+    retry_count: int = field(default=0)
+    error_type: Optional[str] = field(default=None)
+    error_message: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
@@ -33,6 +48,7 @@ class SummaryState:
     research_loop_count: int = field(default=0)  # Research loop count
     running_summary: str = field(default=None)  # Legacy summary field
     todo_items: Annotated[list, operator.add] = field(default_factory=list)
+    execution_traces: list[ExecutionTrace] = field(default_factory=list)
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
