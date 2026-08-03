@@ -2,7 +2,8 @@
 
 import operator
 from dataclasses import dataclass, field
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Any, List, Optional
 
 from typing_extensions import Annotated
 
@@ -37,6 +38,19 @@ class ExecutionTrace:
     retry_count: int = field(default=0)
     error_type: Optional[str] = field(default=None)
     error_message: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class ExecutionEvent:
+    """Single runtime event emitted during task execution."""
+
+    task_id: int
+    event_type: str
+    stage: str
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True)
