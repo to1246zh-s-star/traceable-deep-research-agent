@@ -158,3 +158,51 @@ def test_successful_task_records_completed_execution_trace(monkeypatch) -> None:
     assert trace.duration_ms >= 0
     assert trace.error_type is None
     assert trace.error_message is None
+
+
+def test_search_exception_records_failed_execution_trace(monkeypatch) -> None:
+    def fake_dispatch_search(query, config, loop_count):
+        raise TimeoutError("search timed out")
+
+    monkeypatch.setattr(
+        agent_module,
+        "dispatch_search",
+        fake_dispatch_search,
+    )
+
+    research_agent = build_test_agent()
+    state = SummaryState(research_topic="Test topic")
+    task = TodoItem(
+        id=3,
+        title="Failed search task",
+        intent="Test failed executor trace",
+        query="failing query",
+    )
+    state.todo_items = [task]
+
+    try:
+        list(
+            research_agent._execute_task(
+                state,
+                task,
+                emit_stream=False,
+            )
+        )
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("Expected TimeoutError to be raised")
+
+    assert task.status == "failed"
+    assert len(state.execution_traces) == 1
+
+    trace = state.execution_traces[0]
+    assert trace.task_id == task.id
+    assert trace.status == "failed"
+    assert trace.current_stage == "search"
+    assert trace.started_at is not None
+    assert trace.finished_at is not None
+    assert trace.duration_ms is not None
+    assert trace.duration_ms >= 0
+    assert trace.error_type == "TimeoutError"
+    assert trace.error_message == "search timed out"

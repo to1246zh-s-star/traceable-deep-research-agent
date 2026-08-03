@@ -317,11 +317,20 @@ class DeepResearchAgent:
         with self._state_lock:
             state.execution_traces.append(trace)
 
-        search_result, notices, answer_text, backend = dispatch_search(
-            task.query,
-            self.config,
-            state.research_loop_count,
-        )
+        try:
+            search_result, notices, answer_text, backend = dispatch_search(
+                task.query,
+                self.config,
+                state.research_loop_count,
+            )
+        except Exception as exc:
+            task.status = "failed"
+            trace.status = "failed"
+            trace.finished_at = datetime.now(timezone.utc).isoformat()
+            trace.duration_ms = (perf_counter() - started_counter) * 1000
+            trace.error_type = type(exc).__name__
+            trace.error_message = str(exc)
+            raise
         self._last_search_notices = notices
         task.notices = notices
 
