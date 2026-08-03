@@ -322,6 +322,27 @@ class DeepResearchAgent:
         with self._state_lock:
             state.execution_events.append(event)
 
+    def _drain_execution_events(
+        self,
+        state: SummaryState,
+    ) -> list[dict[str, Any]]:
+        """Convert stored execution events into stream events."""
+
+        with self._state_lock:
+            events = list(state.execution_events)
+            state.execution_events.clear()
+
+        return [
+            {
+                "type": "execution_event",
+                "task_id": event.task_id,
+                "event_type": event.event_type,
+                "stage": event.stage,
+                "metadata": event.metadata,
+            }
+            for event in events
+        ]
+
     def _finish_execution_trace(
         self,
         trace: ExecutionTrace,
@@ -425,6 +446,9 @@ class DeepResearchAgent:
         task.notices = notices
 
         if emit_stream:
+            for event in self._drain_execution_events(state):
+                yield event
+
             for event in self._drain_tool_events(state, step=step):
                 yield event
         else:
