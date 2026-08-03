@@ -206,3 +206,88 @@ def test_search_exception_records_failed_execution_trace(monkeypatch) -> None:
     assert trace.duration_ms >= 0
     assert trace.error_type == "TimeoutError"
     assert trace.error_message == "search timed out"
+
+
+class FailingSummarizer:
+    def summarize_task(self, state, task, context):
+        raise RuntimeError("summary generation failed")
+
+    def is_valid_summary(self, summary):
+        return False
+
+
+def test_summarization_exception_records_failed_execution_trace(monkeypatch) -> None:
+    def fake_dispatch_search(query, config, loop_count):
+        return (
+            {
+                "results": [
+                    {
+                        "title": "Example source",
+                        "url": "https://example.com",
+                        "content": "Example evidence",
+                    }
+                ],
+                "backend": "fake",
+                "answer": None,
+                "notices": [],
+            },
+            [],
+            None,
+            "fake",
+        )
+
+    def fake_prepare_research_context(search_result, answer_text, config):
+        return (
+            "Example source summary",
+            "Example research context",
+        )
+
+    monkeypatch.setattr(
+        agent_module,
+        "dispatch_search",
+        fake_dispatch_search,
+    )
+    monkeypatch.setattr(
+        agent_module,
+        "prepare_research_context",
+        fake_prepare_research_context,
+    )
+
+    research_agent = build_test_agent()
+    research_agent.summarizer = FailingSummarizer()
+
+    state = SummaryState(research_topic="Test topic")
+    task = TodoItem(
+        id=4,
+        title="Failed summary task",
+        intent="Test summarization failure trace",
+        query="successful search query",
+    )
+    state.todo_items = [task]
+
+    try:
+        list(
+            research_agent._execute_task(
+                state,
+                task,
+                emit_stream=False,
+            )
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("Expected RuntimeError to be raised")
+
+    assert task.status == "failed"
+    assert len(state.execution_traces) == 1
+
+    trace = state.execution_traces[0]
+    assert trace.task_id == task.id
+    assert trace.status == "failed"
+    assert trace.current_stage == "summarization"
+    assert trace.started_at is not None
+    assert trace.finished_at is not None
+    assert trace.duration_ms is not None
+    assert trace.duration_ms >= 0
+    assert trace.error_type == "RuntimeError"
+    assert trace.error_message == "summary generation failed"

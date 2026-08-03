@@ -392,72 +392,82 @@ class DeepResearchAgent:
         summary_text: str | None = None
         trace.current_stage = "summarization"
 
-        if emit_stream:
-            for event in self._drain_tool_events(state, step=step):
-                yield event
-            yield {
-                "type": "sources",
-                "task_id": task.id,
-                "latest_sources": sources_summary,
-                "raw_context": context,
-                "step": step,
-                "backend": backend,
-                "note_id": task.note_id,
-                "note_path": task.note_path,
-            }
-
-            summary_stream, summary_getter = self.summarizer.stream_task_summary(state, task, context)
-            try:
+        try:
+            if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
                     yield event
-                chunk_buffer = ""
-                chunk_size = 160
+                yield {
+                    "type": "sources",
+                    "task_id": task.id,
+                    "latest_sources": sources_summary,
+                    "raw_context": context,
+                    "step": step,
+                    "backend": backend,
+                    "note_id": task.note_id,
+                    "note_path": task.note_path,
+                }
 
-                for chunk in summary_stream:
-                    if chunk:
-                        chunk_buffer += chunk
+                summary_stream, summary_getter = self.summarizer.stream_task_summary(state, task, context)
+                try:
+                    for event in self._drain_tool_events(state, step=step):
+                        yield event
+                    chunk_buffer = ""
+                    chunk_size = 160
 
-                    while len(chunk_buffer) >= chunk_size:
-                        content = chunk_buffer[:chunk_size]
-                        chunk_buffer = chunk_buffer[chunk_size:]
+                    for chunk in summary_stream:
+                        if chunk:
+                            chunk_buffer += chunk
 
+                        while len(chunk_buffer) >= chunk_size:
+                            content = chunk_buffer[:chunk_size]
+                            chunk_buffer = chunk_buffer[chunk_size:]
+
+                            yield {
+                                "type": "task_summary_chunk",
+                                "task_id": task.id,
+                                "content": content,
+                                "note_id": task.note_id,
+                                "step": step,
+                            }
+
+                        for event in self._drain_tool_events(state, step=step):
+                            yield event
+
+                    # 模型流结束后发送不足 chunk_size 的剩余内容
+                    if chunk_buffer:
                         yield {
                             "type": "task_summary_chunk",
                             "task_id": task.id,
-                            "content": content,
+                            "content": chunk_buffer,
                             "note_id": task.note_id,
                             "step": step,
                         }
+                finally:
+                    summary_text = summary_getter()
+            else:
+                summary_text = self.summarizer.summarize_task(state, task, context)
+                self._drain_tool_events(state)
 
-                    for event in self._drain_tool_events(state, step=step):
-                        yield event
+            if not self.summarizer.is_valid_summary(summary_text):
+                logger.warning(
+                    "Invalid task summary detected; retrying once: task_id=%s",
+                    task.id,
+                )
+                summary_text = self.summarizer.summarize_task(state, task, context)
 
-                # 模型流结束后发送不足 chunk_size 的剩余内容
-                if chunk_buffer:
-                    yield {
-                        "type": "task_summary_chunk",
-                        "task_id": task.id,
-                        "content": chunk_buffer,
-                        "note_id": task.note_id,
-                        "step": step,
-                    }
-            finally:
-                summary_text = summary_getter()
-        else:
-            summary_text = self.summarizer.summarize_task(state, task, context)
-            self._drain_tool_events(state)
+            if self.summarizer.is_valid_summary(summary_text):
+                task.summary = summary_text.strip()
+            else:
+                task.summary = "暂无可用信息：模型未返回有效的任务总结。"
+        except Exception as exc:
+            task.status = "failed"
+            trace.status = "failed"
+            trace.finished_at = datetime.now(timezone.utc).isoformat()
+            trace.duration_ms = (perf_counter() - started_counter) * 1000
+            trace.error_type = type(exc).__name__
+            trace.error_message = str(exc)
+            raise
 
-        if not self.summarizer.is_valid_summary(summary_text):
-            logger.warning(
-                "Invalid task summary detected; retrying once: task_id=%s",
-                task.id,
-            )
-            summary_text = self.summarizer.summarize_task(state, task, context)
-
-        if self.summarizer.is_valid_summary(summary_text):
-            task.summary = summary_text.strip()
-        else:
-            task.summary = "暂无可用信息：模型未返回有效的任务总结。"
 
         task.status = "completed"
         trace.status = "completed"
