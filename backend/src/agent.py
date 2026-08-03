@@ -375,6 +375,39 @@ class DeepResearchAgent:
 
         return events
 
+    def get_execution_event_summary(
+        self,
+        state: SummaryState,
+    ) -> dict[str, Any]:
+        """Summarize execution event history."""
+
+        with self._state_lock:
+            events = list(state.execution_event_history)
+
+        event_counts: dict[str, int] = {}
+
+        for event in events:
+            event_counts[event.event_type] = (
+                event_counts.get(event.event_type, 0) + 1
+            )
+
+        return {
+            "total_events": len(events),
+            "completed_tasks": event_counts.get(
+                "task_completed",
+                0,
+            ),
+            "failed_tasks": event_counts.get(
+                "task_failed",
+                0,
+            ),
+            "skipped_tasks": event_counts.get(
+                "task_skipped",
+                0,
+            ),
+            "event_counts": event_counts,
+        }
+
     def _finish_execution_trace(
         self,
         trace: ExecutionTrace,
