@@ -377,6 +377,34 @@ class DeepResearchAgent:
 
         return events
 
+    def get_execution_trace(
+        self,
+        state: SummaryState,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Retrieve one execution trace together with related events."""
+
+        with self._state_lock:
+            trace = next(
+                (
+                    item
+                    for item in state.execution_traces
+                    if item.trace_id == trace_id
+                ),
+                None,
+            )
+
+            events = [
+                event
+                for event in state.execution_event_history
+                if event.trace_id == trace_id
+            ]
+
+        return {
+            "trace": trace,
+            "events": events,
+        }
+
     def get_execution_event_summary(
         self,
         state: SummaryState,
