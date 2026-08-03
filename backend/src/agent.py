@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from queue import Empty, Queue
 from threading import Lock, Semaphore, Thread
 from typing import Any, Callable, Iterator
@@ -19,7 +21,7 @@ from prompts import (
     task_summarizer_instructions,
     todo_planner_system_prompt,
 )
-from models import SummaryState, SummaryStateOutput, TodoItem
+from models import ExecutionTrace, SummaryState, SummaryStateOutput, TodoItem
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.search import dispatch_search, prepare_research_context
@@ -303,6 +305,18 @@ class DeepResearchAgent:
         """Run search + summarization for a single task."""
         task.status = "in_progress"
 
+        started_at = datetime.now(timezone.utc)
+        started_counter = perf_counter()
+        trace = ExecutionTrace(
+            task_id=task.id,
+            status="running",
+            started_at=started_at.isoformat(),
+            current_stage="search",
+        )
+
+        with self._state_lock:
+            state.execution_traces.append(trace)
+
         search_result, notices, answer_text, backend = dispatch_search(
             task.query,
             self.config,
@@ -329,6 +343,10 @@ class DeepResearchAgent:
 
         if not search_result or not search_result.get("results"):
             task.status = "skipped"
+            trace.status = "skipped"
+            trace.finished_at = datetime.now(timezone.utc).isoformat()
+            trace.duration_ms = (perf_counter() - started_counter) * 1000
+
             if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
                     yield event
