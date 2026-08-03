@@ -73,6 +73,7 @@ class SummaryState:
     todo_items: Annotated[list, operator.add] = field(default_factory=list)
     execution_traces: list[ExecutionTrace] = field(default_factory=list)
     execution_events: list[ExecutionEvent] = field(default_factory=list)
+    execution_event_history: list[ExecutionEvent] = field(default_factory=list)
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)

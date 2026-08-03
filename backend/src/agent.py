@@ -321,6 +321,7 @@ class DeepResearchAgent:
 
         with self._state_lock:
             state.execution_events.append(event)
+            state.execution_event_history.append(event)
 
     def _drain_execution_events(
         self,
