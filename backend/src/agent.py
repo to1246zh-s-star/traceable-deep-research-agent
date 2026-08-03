@@ -347,6 +347,34 @@ class DeepResearchAgent:
             for event in events
         ]
 
+    def get_execution_events(
+        self,
+        state: SummaryState,
+        *,
+        task_id: int | None = None,
+        event_type: str | None = None,
+    ) -> list[ExecutionEvent]:
+        """Query execution event history with optional filters."""
+
+        with self._state_lock:
+            events = list(state.execution_event_history)
+
+        if task_id is not None:
+            events = [
+                event
+                for event in events
+                if event.task_id == task_id
+            ]
+
+        if event_type is not None:
+            events = [
+                event
+                for event in events
+                if event.event_type == event_type
+            ]
+
+        return events
+
     def _finish_execution_trace(
         self,
         trace: ExecutionTrace,
