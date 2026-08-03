@@ -29,6 +29,7 @@ from models import (
     TodoItem,
 )
 from services.execution_errors import classify_execution_error
+from services.execution_trace import ExecutionTraceService
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.search import dispatch_search, prepare_research_context
@@ -62,6 +63,9 @@ class DeepResearchAgent:
         )
         self._tool_event_sink_enabled = False
         self._state_lock = Lock()
+        self._execution_trace_service = ExecutionTraceService(
+            lock=self._state_lock,
+        )
 
         self.todo_agent = self._create_tool_aware_agent(
             name="研究规划专家",
@@ -377,6 +381,19 @@ class DeepResearchAgent:
 
         return events
 
+    def _get_execution_trace_service(self) -> ExecutionTraceService:
+        """Return the trace service, creating it for lightweight test agents."""
+
+        service = getattr(self, "_execution_trace_service", None)
+
+        if service is None:
+            service = ExecutionTraceService(
+                lock=self._state_lock,
+            )
+            self._execution_trace_service = service
+
+        return service
+
     def get_execution_trace(
         self,
         state: SummaryState,
@@ -384,26 +401,10 @@ class DeepResearchAgent:
     ) -> dict[str, Any]:
         """Retrieve one execution trace together with related events."""
 
-        with self._state_lock:
-            trace = next(
-                (
-                    item
-                    for item in state.execution_traces
-                    if item.trace_id == trace_id
-                ),
-                None,
-            )
-
-            events = [
-                event
-                for event in state.execution_event_history
-                if event.trace_id == trace_id
-            ]
-
-        return {
-            "trace": trace,
-            "events": events,
-        }
+        return self._get_execution_trace_service().get_trace(
+            state,
+            trace_id,
+        )
 
     def serialize_execution_trace(
         self,
@@ -412,41 +413,10 @@ class DeepResearchAgent:
     ) -> dict[str, Any]:
         """Serialize execution trace and events into JSON-compatible data."""
 
-        result = self.get_execution_trace(
+        return self._get_execution_trace_service().serialize_trace(
             state,
             trace_id,
         )
-
-        trace = result["trace"]
-        events = result["events"]
-
-        return {
-            "trace": {
-                "trace_id": trace.trace_id if trace else None,
-                "task_id": trace.task_id if trace else None,
-                "status": trace.status if trace else None,
-                "started_at": trace.started_at if trace else None,
-                "finished_at": trace.finished_at if trace else None,
-                "duration_ms": trace.duration_ms if trace else None,
-                "current_stage": trace.current_stage if trace else None,
-                "retry_count": trace.retry_count if trace else None,
-                "error_type": trace.error_type if trace else None,
-                "error_message": trace.error_message if trace else None,
-            },
-            "events": [
-                {
-                    "schema_version": event.schema_version,
-                    "event_id": event.event_id,
-                    "trace_id": event.trace_id,
-                    "timestamp": event.timestamp,
-                    "task_id": event.task_id,
-                    "event_type": event.event_type,
-                    "stage": event.stage,
-                    "metadata": event.metadata,
-                }
-                for event in events
-            ],
-        }
 
     def get_execution_event_summary(
         self,
