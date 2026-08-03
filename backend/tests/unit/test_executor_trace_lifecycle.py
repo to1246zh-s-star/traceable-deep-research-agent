@@ -204,7 +204,7 @@ def test_search_exception_records_failed_execution_trace(monkeypatch) -> None:
     assert trace.finished_at is not None
     assert trace.duration_ms is not None
     assert trace.duration_ms >= 0
-    assert trace.error_type == "TimeoutError"
+    assert trace.error_type == "timeout"
     assert trace.error_message == "search timed out"
 
 
@@ -289,5 +289,5 @@ def test_summarization_exception_records_failed_execution_trace(monkeypatch) -> 
     assert trace.finished_at is not None
     assert trace.duration_ms is not None
     assert trace.duration_ms >= 0
-    assert trace.error_type == "RuntimeError"
+    assert trace.error_type == "provider_error"
     assert trace.error_message == "summary generation failed"

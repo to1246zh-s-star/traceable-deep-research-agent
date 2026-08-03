@@ -22,6 +22,7 @@ from prompts import (
     todo_planner_system_prompt,
 )
 from models import ExecutionTrace, SummaryState, SummaryStateOutput, TodoItem
+from services.execution_errors import classify_execution_error
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.search import dispatch_search, prepare_research_context
@@ -312,7 +313,7 @@ class DeepResearchAgent:
             trace.error_type = None
             trace.error_message = None
         else:
-            trace.error_type = type(error).__name__
+            trace.error_type = classify_execution_error(error)
             trace.error_message = str(error)
 
     def _execute_task(
