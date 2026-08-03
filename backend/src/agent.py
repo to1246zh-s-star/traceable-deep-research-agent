@@ -305,6 +305,7 @@ class DeepResearchAgent:
         self,
         state: SummaryState,
         *,
+        trace_id: str | None = None,
         task_id: int,
         event_type: str,
         stage: str,
@@ -313,6 +314,7 @@ class DeepResearchAgent:
         """Append a runtime execution event."""
 
         event = ExecutionEvent(
+            trace_id=trace_id or "trace_unknown",
             task_id=task_id,
             event_type=event_type,
             stage=stage,
@@ -440,13 +442,6 @@ class DeepResearchAgent:
         """Run search + summarization for a single task."""
         task.status = "in_progress"
 
-        self._emit_execution_event(
-            state,
-            task_id=task.id,
-            event_type="task_started",
-            stage="executor",
-        )
-
         started_at = datetime.now(timezone.utc)
         started_counter = perf_counter()
         trace = ExecutionTrace(
@@ -458,6 +453,14 @@ class DeepResearchAgent:
 
         with self._state_lock:
             state.execution_traces.append(trace)
+
+        self._emit_execution_event(
+            state,
+            trace_id=trace.trace_id,
+            task_id=task.id,
+            event_type="task_started",
+            stage="executor",
+        )
 
         try:
             self._emit_execution_event(
@@ -586,6 +589,7 @@ class DeepResearchAgent:
 
         self._emit_execution_event(
             state,
+            trace_id=trace.trace_id,
             task_id=task.id,
             event_type="summarization_started",
             stage="summarization",
@@ -689,6 +693,7 @@ class DeepResearchAgent:
 
         self._emit_execution_event(
             state,
+            trace_id=trace.trace_id,
             task_id=task.id,
             event_type="task_completed",
             stage="executor",

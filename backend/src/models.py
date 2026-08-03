@@ -50,7 +50,9 @@ class ExecutionTrace:
 class ExecutionEvent:
     """Single runtime event emitted during task execution."""
 
-    trace_id: str
+    trace_id: str = field(
+        default="trace_unknown"
+    )
 
     task_id: int
     event_type: str
