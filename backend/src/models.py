@@ -49,6 +49,8 @@ class ExecutionEvent:
     event_type: str
     stage: str
 
+    schema_version: int = field(default=1)
+
     event_id: str = field(
         default_factory=lambda: f"evt_{uuid.uuid4().hex[:12]}"
     )
