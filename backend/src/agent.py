@@ -294,6 +294,27 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Execution helpers
     # ------------------------------------------------------------------
+    def _finish_execution_trace(
+        self,
+        trace: ExecutionTrace,
+        *,
+        status: str,
+        started_counter: float,
+        error: Exception | None = None,
+    ) -> None:
+        """Finalize an execution trace with timing and optional error details."""
+
+        trace.status = status
+        trace.finished_at = datetime.now(timezone.utc).isoformat()
+        trace.duration_ms = (perf_counter() - started_counter) * 1000
+
+        if error is None:
+            trace.error_type = None
+            trace.error_message = None
+        else:
+            trace.error_type = type(error).__name__
+            trace.error_message = str(error)
+
     def _execute_task(
         self,
         state: SummaryState,
@@ -325,11 +346,12 @@ class DeepResearchAgent:
             )
         except Exception as exc:
             task.status = "failed"
-            trace.status = "failed"
-            trace.finished_at = datetime.now(timezone.utc).isoformat()
-            trace.duration_ms = (perf_counter() - started_counter) * 1000
-            trace.error_type = type(exc).__name__
-            trace.error_message = str(exc)
+            self._finish_execution_trace(
+                trace,
+                status="failed",
+                started_counter=started_counter,
+                error=exc,
+            )
             raise
         self._last_search_notices = notices
         task.notices = notices
@@ -352,9 +374,11 @@ class DeepResearchAgent:
 
         if not search_result or not search_result.get("results"):
             task.status = "skipped"
-            trace.status = "skipped"
-            trace.finished_at = datetime.now(timezone.utc).isoformat()
-            trace.duration_ms = (perf_counter() - started_counter) * 1000
+            self._finish_execution_trace(
+                trace,
+                status="skipped",
+                started_counter=started_counter,
+            )
 
             if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
@@ -461,18 +485,21 @@ class DeepResearchAgent:
                 task.summary = "暂无可用信息：模型未返回有效的任务总结。"
         except Exception as exc:
             task.status = "failed"
-            trace.status = "failed"
-            trace.finished_at = datetime.now(timezone.utc).isoformat()
-            trace.duration_ms = (perf_counter() - started_counter) * 1000
-            trace.error_type = type(exc).__name__
-            trace.error_message = str(exc)
+            self._finish_execution_trace(
+                trace,
+                status="failed",
+                started_counter=started_counter,
+                error=exc,
+            )
             raise
 
 
         task.status = "completed"
-        trace.status = "completed"
-        trace.finished_at = datetime.now(timezone.utc).isoformat()
-        trace.duration_ms = (perf_counter() - started_counter) * 1000
+        self._finish_execution_trace(
+            trace,
+            status="completed",
+            started_counter=started_counter,
+        )
 
         if emit_stream:
             for event in self._drain_tool_events(state, step=step):
