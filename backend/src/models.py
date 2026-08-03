@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional
+import uuid
 
 from typing_extensions import Annotated
 
@@ -30,6 +31,10 @@ class TodoItem:
 class ExecutionTrace:
     """Runtime trace for a single TODO task execution."""
 
+    trace_id: str = field(
+        default_factory=lambda: f"trace_{uuid.uuid4().hex[:12]}"
+    )
+
     task_id: int
     status: str = field(default="pending")
     started_at: Optional[str] = field(default=None)
@@ -44,6 +49,8 @@ class ExecutionTrace:
 @dataclass(kw_only=True)
 class ExecutionEvent:
     """Single runtime event emitted during task execution."""
+
+    trace_id: str
 
     task_id: int
     event_type: str
