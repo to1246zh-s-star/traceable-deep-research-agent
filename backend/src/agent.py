@@ -335,6 +335,9 @@ class DeepResearchAgent:
         return [
             {
                 "type": "execution_event",
+                "schema_version": event.schema_version,
+                "event_id": event.event_id,
+                "timestamp": event.timestamp,
                 "task_id": event.task_id,
                 "event_type": event.event_type,
                 "stage": event.stage,
