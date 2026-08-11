@@ -121,6 +121,72 @@ def create_app() -> FastAPI:
     def health_check() -> Dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/research/{research_id}/traces")
+    def list_research_traces(research_id: str) -> dict[str, Any]:
+        """Return execution traces for a stored research run."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        traces = [
+            {
+                "trace_id": trace.trace_id,
+                "task_id": trace.task_id,
+                "status": trace.status,
+                "started_at": trace.started_at,
+                "finished_at": trace.finished_at,
+                "duration_ms": trace.duration_ms,
+                "current_stage": trace.current_stage,
+                "retry_count": trace.retry_count,
+                "error_type": trace.error_type,
+                "error_message": trace.error_message,
+            }
+            for trace in state.execution_traces
+        ]
+
+        return {
+            "research_id": research_id,
+            "traces": traces,
+        }
+
+    @app.get("/research/{research_id}/traces")
+    def list_research_traces(research_id: str) -> dict[str, Any]:
+        """Return execution traces for a stored research run."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        traces = [
+            {
+                "trace_id": trace.trace_id,
+                "task_id": trace.task_id,
+                "status": trace.status,
+                "started_at": trace.started_at,
+                "finished_at": trace.finished_at,
+                "duration_ms": trace.duration_ms,
+                "current_stage": trace.current_stage,
+                "retry_count": trace.retry_count,
+                "error_type": trace.error_type,
+                "error_message": trace.error_message,
+            }
+            for trace in state.execution_traces
+        ]
+
+        return {
+            "research_id": research_id,
+            "traces": traces,
+        }
+
     @app.post("/research", response_model=ResearchResponse)
     def run_research(payload: ResearchRequest) -> ResearchResponse:
         try:
