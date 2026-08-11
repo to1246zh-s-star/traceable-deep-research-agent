@@ -53,6 +53,25 @@ class Evidence:
 
 
 @dataclass(kw_only=True)
+class Claim:
+    """Research claim supported by retrieved evidence."""
+
+    claim_id: str = field(
+        default_factory=lambda: f"clm_{uuid.uuid4().hex[:12]}"
+    )
+
+    task_id: int
+    trace_id: str
+
+    text: str
+    evidence_ids: list[str] = field(default_factory=list)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class ExecutionTrace:
     """Runtime trace for a single TODO task execution."""
 
@@ -109,6 +128,7 @@ class SummaryState:
     execution_events: list[ExecutionEvent] = field(default_factory=list)
     execution_event_history: list[ExecutionEvent] = field(default_factory=list)
     evidence_items: list[Evidence] = field(default_factory=list)
+    claims: list[Claim] = field(default_factory=list)
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
