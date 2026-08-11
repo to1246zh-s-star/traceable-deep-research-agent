@@ -322,6 +322,27 @@ def create_app() -> FastAPI:
             try:
                 for event in agent.run_stream(payload.topic):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                state = agent.last_state
+
+                if state is None:
+                    raise RuntimeError(
+                        "Research state was not captured"
+                    )
+
+                research_id = app.state.research_store.save(
+                    state
+                )
+
+                stored_payload = {
+                    "type": "research_stored",
+                    "research_id": research_id,
+                }
+
+                yield (
+                    f"data: {json.dumps(stored_payload, ensure_ascii=False)}\n\n"
+                )
+
             except Exception as exc:  # pragma: no cover - defensive guardrail
                 logger.exception("Streaming research failed")
                 error_payload = {"type": "error", "detail": str(exc)}
