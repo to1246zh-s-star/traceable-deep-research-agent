@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import asynccontextmanager
 from threading import Lock
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, AsyncIterator, Dict, Iterator, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,22 +84,8 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="HelloAgents Deep Researcher")
-    app.state.research_store = InMemoryResearchStore()
-    app.state.execution_trace_service = ExecutionTraceService(
-        lock=Lock(),
-    )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.on_event("startup")
-    def log_startup_configuration() -> None:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config = Configuration.from_env()
 
         if config.llm_provider == "ollama":
@@ -121,6 +108,26 @@ def create_app() -> FastAPI:
             config.strip_thinking_tokens,
             _mask_secret(config.llm_api_key),
         )
+
+        yield
+
+    app = FastAPI(
+        title="HelloAgents Deep Researcher",
+        lifespan=lifespan,
+    )
+
+    app.state.research_store = InMemoryResearchStore()
+    app.state.execution_trace_service = ExecutionTraceService(
+        lock=Lock(),
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/healthz")
     def health_check() -> Dict[str, str]:
