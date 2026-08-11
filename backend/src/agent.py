@@ -482,6 +482,7 @@ class DeepResearchAgent:
         try:
             self._emit_execution_event(
                 state,
+                trace_id=trace.trace_id,
                 task_id=task.id,
                 event_type="search_started",
                 stage="search",
@@ -495,6 +496,7 @@ class DeepResearchAgent:
 
             self._emit_execution_event(
                 state,
+                trace_id=trace.trace_id,
                 task_id=task.id,
                 event_type="search_finished",
                 stage="search",
@@ -512,6 +514,7 @@ class DeepResearchAgent:
 
             self._emit_execution_event(
                 state,
+                trace_id=trace.trace_id,
                 task_id=task.id,
                 event_type="task_failed",
                 stage="search",
@@ -554,6 +557,7 @@ class DeepResearchAgent:
 
             self._emit_execution_event(
                 state,
+                trace_id=trace.trace_id,
                 task_id=task.id,
                 event_type="task_skipped",
                 stage="search",
@@ -684,6 +688,7 @@ class DeepResearchAgent:
 
             self._emit_execution_event(
                 state,
+                trace_id=trace.trace_id,
                 task_id=task.id,
                 event_type="task_failed",
                 stage="summarization",
