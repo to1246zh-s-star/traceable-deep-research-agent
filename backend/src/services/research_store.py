@@ -4,8 +4,25 @@ from __future__ import annotations
 
 import uuid
 from threading import Lock
+from typing import Protocol
 
 from models import SummaryState
+
+
+class ResearchStore(Protocol):
+    """Storage contract for research states."""
+
+    def save(self, state: SummaryState) -> str:
+        """Store a research state and return its research id."""
+        ...
+
+    def get(self, research_id: str) -> SummaryState | None:
+        """Return a stored research state, if present."""
+        ...
+
+    def list(self) -> list[tuple[str, SummaryState]]:
+        """Return stored research states."""
+        ...
 
 
 class InMemoryResearchStore:
