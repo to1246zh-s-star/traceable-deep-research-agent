@@ -1,5 +1,5 @@
-from services.research_store import InMemoryResearchStore, ResearchStore
 from models import SummaryState
+from services.research_store import InMemoryResearchStore, ResearchStore
 
 
 def test_in_memory_store_satisfies_research_store_protocol() -> None:

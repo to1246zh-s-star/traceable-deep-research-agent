@@ -48,3 +48,7 @@ coverage.xml
 # Frontend build/cache artifacts
 frontend/.vite/
 frontend/dist/
+
+# Runtime research persistence
+backend/data/*.db
+backend/data/*.db-*
