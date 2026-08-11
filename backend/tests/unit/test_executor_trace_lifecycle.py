@@ -371,3 +371,75 @@ def test_successful_task_records_traceable_evidence(monkeypatch) -> None:
     assert evidence.snippet == "Search result evidence snippet."
     assert evidence.content == "Full evidence page content."
     assert evidence.source_rank == 1
+
+
+def test_successful_task_records_claim_with_evidence_links(monkeypatch) -> None:
+    def fake_dispatch_search(query, config, loop_count):
+        return (
+            {
+                "results": [
+                    {
+                        "title": "Claim source",
+                        "url": "https://example.com/claim",
+                        "content": "Claim evidence snippet.",
+                        "raw_content": "Claim full evidence content.",
+                    }
+                ],
+                "backend": "fake",
+                "answer": None,
+                "notices": [],
+            },
+            [],
+            None,
+            "fake",
+        )
+
+    def fake_prepare_research_context(search_result, answer_text, config):
+        return (
+            "Claim source summary",
+            "Claim research context",
+        )
+
+    monkeypatch.setattr(
+        agent_module,
+        "dispatch_search",
+        fake_dispatch_search,
+    )
+    monkeypatch.setattr(
+        agent_module,
+        "prepare_research_context",
+        fake_prepare_research_context,
+    )
+
+    research_agent = build_test_agent()
+    research_agent.summarizer = DummySummarizer()
+
+    state = SummaryState(research_topic="Claim integration")
+    task = TodoItem(
+        id=6,
+        title="Claim task",
+        intent="Verify claim evidence linkage",
+        query="claim query",
+    )
+
+    state.todo_items = [task]
+
+    list(
+        research_agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
+        )
+    )
+
+    assert len(state.claims) == 1
+    assert len(state.evidence_items) == 1
+
+    claim = state.claims[0]
+    evidence = state.evidence_items[0]
+    trace = state.execution_traces[0]
+
+    assert claim.task_id == task.id
+    assert claim.trace_id == trace.trace_id
+    assert claim.text == task.summary
+    assert claim.evidence_ids == [evidence.evidence_id]

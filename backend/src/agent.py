@@ -22,6 +22,7 @@ from prompts import (
     todo_planner_system_prompt,
 )
 from models import (
+    Claim,
     ExecutionEvent,
     ExecutionTrace,
     SummaryState,
@@ -716,6 +717,23 @@ class DeepResearchAgent:
             )
             raise
 
+
+        evidence_ids = [
+            evidence.evidence_id
+            for evidence in state.evidence_items
+            if evidence.task_id == task.id
+            and evidence.trace_id == trace.trace_id
+        ]
+
+        claim = Claim(
+            task_id=task.id,
+            trace_id=trace.trace_id,
+            text=task.summary or "",
+            evidence_ids=evidence_ids,
+        )
+
+        with self._state_lock:
+            state.claims.append(claim)
 
         task.status = "completed"
         self._finish_execution_trace(

@@ -92,6 +92,62 @@ class ExecutionEventResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class EvidenceResponse(BaseModel):
+    """Serialized retrieved evidence exposed by the HTTP API."""
+
+    evidence_id: str
+    task_id: int
+    trace_id: str
+    query: str
+    backend: str
+    source_title: str | None = None
+    source_url: str | None = None
+    snippet: str | None = None
+    content: str | None = None
+    source_rank: int | None = None
+    created_at: str
+
+
+class EvidenceListResponse(BaseModel):
+    """Response containing evidence captured for one research run."""
+
+    research_id: str
+    evidence: list[EvidenceResponse] = Field(default_factory=list)
+
+
+class EvidenceDetailResponse(BaseModel):
+    """Response containing one evidence item."""
+
+    research_id: str
+    evidence: EvidenceResponse
+
+
+class ClaimResponse(BaseModel):
+    """Serialized research claim exposed by the HTTP API."""
+
+    claim_id: str
+    task_id: int
+    trace_id: str
+    text: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    created_at: str
+
+
+class ClaimListResponse(BaseModel):
+    """Response containing claims for one research run."""
+
+    research_id: str
+    claims: list[ClaimResponse] = Field(default_factory=list)
+
+
+class ClaimDetailResponse(BaseModel):
+    """One claim together with its supporting evidence."""
+
+    research_id: str
+    claim: ClaimResponse
+    evidence: list[EvidenceResponse] = Field(default_factory=list)
+
+
 class TraceListResponse(BaseModel):
     """Response containing all traces for one research run."""
 
@@ -113,6 +169,33 @@ class TraceEventsResponse(BaseModel):
     research_id: str
     trace_id: str
     events: list[ExecutionEventResponse] = Field(default_factory=list)
+
+def _serialize_evidence(evidence: Any) -> dict[str, Any]:
+    return {
+        "evidence_id": evidence.evidence_id,
+        "task_id": evidence.task_id,
+        "trace_id": evidence.trace_id,
+        "query": evidence.query,
+        "backend": evidence.backend,
+        "source_title": evidence.source_title,
+        "source_url": evidence.source_url,
+        "snippet": evidence.snippet,
+        "content": evidence.content,
+        "source_rank": evidence.source_rank,
+        "created_at": evidence.created_at,
+    }
+
+
+def _serialize_claim(claim: Any) -> dict[str, Any]:
+    return {
+        "claim_id": claim.claim_id,
+        "task_id": claim.task_id,
+        "trace_id": claim.trace_id,
+        "text": claim.text,
+        "evidence_ids": list(claim.evidence_ids),
+        "created_at": claim.created_at,
+    }
+
 
 def _mask_secret(value: Optional[str], visible: int = 4) -> str:
     """Mask sensitive tokens while keeping leading and trailing characters."""
@@ -186,6 +269,143 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def health_check() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.get(
+        "/research/{research_id}/evidence",
+        response_model=EvidenceListResponse,
+    )
+    def list_research_evidence(research_id: str) -> dict[str, Any]:
+        """Return all structured evidence captured for one research run."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        return {
+            "research_id": research_id,
+            "evidence": [
+                _serialize_evidence(evidence)
+                for evidence in state.evidence_items
+            ],
+        }
+
+    @app.get(
+        "/research/{research_id}/evidence/{evidence_id}",
+        response_model=EvidenceDetailResponse,
+    )
+    def get_research_evidence(
+        research_id: str,
+        evidence_id: str,
+    ) -> dict[str, Any]:
+        """Return one structured evidence item."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        evidence = next(
+            (
+                item
+                for item in state.evidence_items
+                if item.evidence_id == evidence_id
+            ),
+            None,
+        )
+
+        if evidence is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Evidence not found",
+            )
+
+        return {
+            "research_id": research_id,
+            "evidence": _serialize_evidence(evidence),
+        }
+
+    @app.get(
+        "/research/{research_id}/claims",
+        response_model=ClaimListResponse,
+    )
+    def list_research_claims(research_id: str) -> dict[str, Any]:
+        """Return all claims generated for one research run."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        return {
+            "research_id": research_id,
+            "claims": [
+                _serialize_claim(claim)
+                for claim in state.claims
+            ],
+        }
+
+    @app.get(
+        "/research/{research_id}/claims/{claim_id}",
+        response_model=ClaimDetailResponse,
+    )
+    def get_research_claim(
+        research_id: str,
+        claim_id: str,
+    ) -> dict[str, Any]:
+        """Return one claim and its supporting evidence."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        claim = next(
+            (
+                item
+                for item in state.claims
+                if item.claim_id == claim_id
+            ),
+            None,
+        )
+
+        if claim is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Claim not found",
+            )
+
+        evidence_by_id = {
+            evidence.evidence_id: evidence
+            for evidence in state.evidence_items
+        }
+
+        supporting_evidence = [
+            evidence_by_id[evidence_id]
+            for evidence_id in claim.evidence_ids
+            if evidence_id in evidence_by_id
+        ]
+
+        return {
+            "research_id": research_id,
+            "claim": _serialize_claim(claim),
+            "evidence": [
+                _serialize_evidence(evidence)
+                for evidence in supporting_evidence
+            ],
+        }
 
     @app.get(
         "/research/{research_id}/traces",

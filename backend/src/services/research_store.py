@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Protocol
 
-from models import ExecutionEvent, ExecutionTrace, SummaryState, TodoItem
+from models import Claim, Evidence, ExecutionEvent, ExecutionTrace, SummaryState, TodoItem
 
 
 class ResearchStore(Protocol):
@@ -96,7 +96,46 @@ class SQLiteResearchStore:
                         ON DELETE CASCADE
                 );
 
-                CREATE TABLE IF NOT EXISTS execution_events (
+                CREATE TABLE IF NOT EXISTS evidence_items (
+                research_id TEXT NOT NULL,
+                evidence_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL,
+                trace_id TEXT NOT NULL,
+                query TEXT NOT NULL,
+                backend TEXT NOT NULL,
+                source_title TEXT,
+                source_url TEXT,
+                snippet TEXT,
+                content TEXT,
+                source_rank INTEGER,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (research_id, evidence_id),
+                FOREIGN KEY (research_id)
+                    REFERENCES research_runs(research_id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (research_id, trace_id)
+                    REFERENCES execution_traces(research_id, trace_id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS claims (
+                research_id TEXT NOT NULL,
+                claim_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL,
+                trace_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                evidence_ids TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (research_id, claim_id),
+                FOREIGN KEY (research_id)
+                    REFERENCES research_runs(research_id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (research_id, trace_id)
+                    REFERENCES execution_traces(research_id, trace_id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS execution_events (
                     event_id TEXT NOT NULL,
                     research_id TEXT NOT NULL,
                     trace_id TEXT NOT NULL,
@@ -227,6 +266,73 @@ class SQLiteResearchStore:
 
                 connection.executemany(
                     """
+                    INSERT INTO evidence_items (
+                        research_id,
+                        evidence_id,
+                        task_id,
+                        trace_id,
+                        query,
+                        backend,
+                        source_title,
+                        source_url,
+                        snippet,
+                        content,
+                        source_rank,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            research_id,
+                            evidence.evidence_id,
+                            evidence.task_id,
+                            evidence.trace_id,
+                            evidence.query,
+                            evidence.backend,
+                            evidence.source_title,
+                            evidence.source_url,
+                            evidence.snippet,
+                            evidence.content,
+                            evidence.source_rank,
+                            evidence.created_at,
+                        )
+                        for evidence in state.evidence_items
+                    ],
+                )
+
+                connection.executemany(
+                    """
+                    INSERT INTO claims (
+                        research_id,
+                        claim_id,
+                        task_id,
+                        trace_id,
+                        text,
+                        evidence_ids,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            research_id,
+                            claim.claim_id,
+                            claim.task_id,
+                            claim.trace_id,
+                            claim.text,
+                            json.dumps(
+                                claim.evidence_ids,
+                                ensure_ascii=False,
+                            ),
+                            claim.created_at,
+                        )
+                        for claim in state.claims
+                    ],
+                )
+
+                connection.executemany(
+                    """
                     INSERT INTO execution_events (
                         event_id,
                         research_id,
@@ -323,6 +429,43 @@ class SQLiteResearchStore:
                     (research_id,),
                 ).fetchall()
 
+                evidence_rows = connection.execute(
+                    """
+                    SELECT
+                        evidence_id,
+                        task_id,
+                        trace_id,
+                        query,
+                        backend,
+                        source_title,
+                        source_url,
+                        snippet,
+                        content,
+                        source_rank,
+                        created_at
+                    FROM evidence_items
+                    WHERE research_id = ?
+                    ORDER BY task_id, source_rank, evidence_id
+                    """,
+                    (research_id,),
+                ).fetchall()
+
+                claim_rows = connection.execute(
+                    """
+                    SELECT
+                        claim_id,
+                        task_id,
+                        trace_id,
+                        text,
+                        evidence_ids,
+                        created_at
+                    FROM claims
+                    WHERE research_id = ?
+                    ORDER BY task_id, claim_id
+                    """,
+                    (research_id,),
+                ).fetchall()
+
                 event_rows = connection.execute(
                     """
                     SELECT
@@ -374,6 +517,35 @@ class SQLiteResearchStore:
             for row in trace_rows
         ]
 
+        evidence_items = [
+            Evidence(
+                evidence_id=row["evidence_id"],
+                task_id=row["task_id"],
+                trace_id=row["trace_id"],
+                query=row["query"],
+                backend=row["backend"],
+                source_title=row["source_title"],
+                source_url=row["source_url"],
+                snippet=row["snippet"],
+                content=row["content"],
+                source_rank=row["source_rank"],
+                created_at=row["created_at"],
+            )
+            for row in evidence_rows
+        ]
+
+        claims = [
+            Claim(
+                claim_id=row["claim_id"],
+                task_id=row["task_id"],
+                trace_id=row["trace_id"],
+                text=row["text"],
+                evidence_ids=json.loads(row["evidence_ids"]),
+                created_at=row["created_at"],
+            )
+            for row in claim_rows
+        ]
+
         execution_event_history = [
             ExecutionEvent(
                 event_id=row["event_id"],
@@ -397,6 +569,8 @@ class SQLiteResearchStore:
             execution_traces=execution_traces,
             execution_events=[],
             execution_event_history=execution_event_history,
+            evidence_items=evidence_items,
+            claims=claims,
             structured_report=research_row["structured_report"],
             report_note_id=research_row["report_note_id"],
             report_note_path=research_row["report_note_path"],
