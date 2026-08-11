@@ -166,6 +166,7 @@
         </div>
 
         <section
+          id="trace-inspector"
           v-if="researchId"
           class="trace-inspector"
         >
@@ -203,7 +204,9 @@
                 type="button"
                 class="trace-list-item"
                 :class="{
-                  active: trace.trace_id === activeTraceId
+                  active: trace.trace_id === activeTraceId,
+                  'trace-failed': trace.status === 'failed',
+                  'trace-skipped': trace.status === 'skipped'
                 }"
                 @click="selectTrace(trace.trace_id)"
               >
@@ -225,10 +228,13 @@
                 </div>
 
                 <p
-                  v-if="trace.error_type"
+                  v-if="trace.error_type || trace.error_message"
                   class="trace-list-error"
                 >
-                  {{ trace.error_type }}
+                  <strong>{{ trace.error_type || "ExecutionError" }}</strong>
+                  <span v-if="trace.error_message">
+                    {{ trace.error_message }}
+                  </span>
                 </p>
               </button>
             </aside>
@@ -302,11 +308,17 @@
                 </div>
 
                 <div
-                  v-if="activeTraceDetail.trace.error_type"
+                  v-if="
+                    activeTraceDetail.trace.error_type ||
+                    activeTraceDetail.trace.error_message
+                  "
                   class="trace-failure"
                 >
                   <strong>
-                    {{ activeTraceDetail.trace.error_type }}
+                    {{
+                      activeTraceDetail.trace.error_type ||
+                      "ExecutionError"
+                    }}
                   </strong>
                   <p>
                     {{
@@ -351,17 +363,35 @@
 
                         <code>{{ event.event_id }}</code>
 
-                        <details
-                          v-if="
-                            Object.keys(event.metadata).length
-                          "
-                          class="event-metadata"
+                        <template
+                          v-if="Object.keys(event.metadata).length"
                         >
-                          <summary>Metadata</summary>
-                          <pre>{{
-                            formatEventMetadata(event.metadata)
-                          }}</pre>
-                        </details>
+                          <div class="event-metadata-summary">
+                            <span v-if="event.metadata.backend">
+                              Backend: {{ event.metadata.backend }}
+                            </span>
+                            <span
+                              v-if="
+                                event.metadata.sources !== undefined
+                              "
+                            >
+                              Sources: {{ event.metadata.sources }}
+                            </span>
+                            <span v-if="event.metadata.reason">
+                              Reason: {{ event.metadata.reason }}
+                            </span>
+                            <span v-if="event.metadata.error_type">
+                              Error: {{ event.metadata.error_type }}
+                            </span>
+                          </div>
+
+                          <details class="event-metadata">
+                            <summary>完整 Metadata</summary>
+                            <pre>{{
+                              formatEventMetadata(event.metadata)
+                            }}</pre>
+                          </details>
+                        </template>
                       </div>
                     </li>
                   </ol>
@@ -406,6 +436,18 @@
                   </span>
                 </button>
                 <p class="task-intent">{{ task.intent }}</p>
+
+                <button
+                  v-if="getTraceForTask(task.id)"
+                  type="button"
+                  class="task-trace-link"
+                  @click.stop="openTraceForTask(task.id)"
+                >
+                  查看 Trace
+                  <span>
+                    {{ getTraceForTask(task.id)?.status }}
+                  </span>
+                </button>
               </li>
             </ul>
           </aside>
@@ -917,6 +959,33 @@ function formatTraceTimestamp(value: string | null): string {
   }
 
   return date.toLocaleString();
+}
+
+function getTraceForTask(
+  taskId: number
+): ExecutionTraceResponse | undefined {
+  return executionTraces.value.find(
+    (trace) => trace.task_id === taskId
+  );
+}
+
+async function openTraceForTask(taskId: number): Promise<void> {
+  const trace = getTraceForTask(taskId);
+
+  if (!trace) {
+    return;
+  }
+
+  await selectTrace(trace.trace_id);
+
+  requestAnimationFrame(() => {
+    document
+      .getElementById("trace-inspector")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  });
 }
 
 function formatEventMetadata(
@@ -3023,6 +3092,73 @@ select:focus {
   .trace-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+
+/* Phase 5.2 — Trace UX */
+
+.task-trace-link {
+  margin: 0 14px 12px;
+  padding: 6px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  background: rgba(238, 242, 255, 0.72);
+  cursor: pointer;
+  font-size: 11px;
+  color: #4338ca;
+}
+
+.task-trace-link:hover {
+  background: rgba(224, 231, 255, 0.95);
+}
+
+.task-trace-link span {
+  text-transform: uppercase;
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+.trace-list-item.trace-failed {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.trace-list-item.trace-skipped {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(255, 251, 235, 0.78);
+}
+
+.trace-list-error {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trace-list-error span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.event-metadata-summary {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.event-metadata-summary span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(238, 242, 255, 0.86);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  color: #4338ca;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 </style>
