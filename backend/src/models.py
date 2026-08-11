@@ -27,6 +27,32 @@ class TodoItem:
 
 
 @dataclass(kw_only=True)
+class Evidence:
+    """Structured evidence captured from one retrieved source."""
+
+    evidence_id: str = field(
+        default_factory=lambda: f"evi_{uuid.uuid4().hex[:12]}"
+    )
+
+    task_id: int
+    trace_id: str
+
+    query: str
+    backend: str
+
+    source_title: Optional[str] = field(default=None)
+    source_url: Optional[str] = field(default=None)
+    snippet: Optional[str] = field(default=None)
+    content: Optional[str] = field(default=None)
+
+    source_rank: Optional[int] = field(default=None)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class ExecutionTrace:
     """Runtime trace for a single TODO task execution."""
 
@@ -82,6 +108,7 @@ class SummaryState:
     execution_traces: list[ExecutionTrace] = field(default_factory=list)
     execution_events: list[ExecutionEvent] = field(default_factory=list)
     execution_event_history: list[ExecutionEvent] = field(default_factory=list)
+    evidence_items: list[Evidence] = field(default_factory=list)
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
