@@ -14,10 +14,10 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from config import Configuration, SearchAPI
 from agent import DeepResearchAgent
+from config import Configuration, SearchAPI
 from services.execution_trace import ExecutionTraceService
-from services.research_store import InMemoryResearchStore
+from services.research_store import SQLiteResearchStore
 
 # 添加控制台日志处理程序
 logger.add(
@@ -135,9 +135,10 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 
 
 def create_app() -> FastAPI:
+    config = Configuration.from_env()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        config = Configuration.from_env()
 
         if config.llm_provider == "ollama":
             base_url = config.sanitized_ollama_url()
@@ -167,7 +168,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    app.state.research_store = InMemoryResearchStore()
+    app.state.research_store = SQLiteResearchStore(
+        config.research_db_path
+    )
     app.state.execution_trace_service = ExecutionTraceService(
         lock=Lock(),
     )

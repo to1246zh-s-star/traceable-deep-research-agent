@@ -79,7 +79,7 @@ class SQLiteResearchStore:
                 );
 
                 CREATE TABLE IF NOT EXISTS execution_traces (
-                    trace_id TEXT PRIMARY KEY,
+                    trace_id TEXT NOT NULL,
                     research_id TEXT NOT NULL,
                     task_id INTEGER NOT NULL,
                     status TEXT NOT NULL,
@@ -90,13 +90,14 @@ class SQLiteResearchStore:
                     retry_count INTEGER NOT NULL DEFAULT 0,
                     error_type TEXT,
                     error_message TEXT,
+                    PRIMARY KEY (research_id, trace_id),
                     FOREIGN KEY (research_id)
                         REFERENCES research_runs(research_id)
                         ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS execution_events (
-                    event_id TEXT PRIMARY KEY,
+                    event_id TEXT NOT NULL,
                     research_id TEXT NOT NULL,
                     trace_id TEXT NOT NULL,
                     task_id INTEGER NOT NULL,
@@ -105,11 +106,15 @@ class SQLiteResearchStore:
                     event_type TEXT NOT NULL,
                     stage TEXT NOT NULL,
                     metadata_json TEXT NOT NULL,
+                    PRIMARY KEY (research_id, event_id),
                     FOREIGN KEY (research_id)
                         REFERENCES research_runs(research_id)
                         ON DELETE CASCADE,
-                    FOREIGN KEY (trace_id)
-                        REFERENCES execution_traces(trace_id)
+                    FOREIGN KEY (research_id, trace_id)
+                        REFERENCES execution_traces(
+                            research_id,
+                            trace_id
+                        )
                         ON DELETE CASCADE
                 );
                 """

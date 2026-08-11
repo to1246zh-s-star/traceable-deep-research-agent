@@ -46,6 +46,11 @@ class Configuration(BaseModel):
         title="Notes Workspace",
         description="Directory for NoteTool to persist task notes",
     )
+    research_db_path: str = Field(
+        default="./data/research.db",
+        title="Research Database Path",
+        description="SQLite database path used to persist research runs",
+    )
     fetch_full_page: bool = Field(
         default=True,
         title="Fetch Full Page",

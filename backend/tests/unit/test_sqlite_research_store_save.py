@@ -193,3 +193,50 @@ def test_sqlite_store_persists_event_history_not_stream_buffer(tmp_path) -> None
         ).fetchall()
 
     assert event_ids == [("evt_history",)]
+
+
+def test_trace_identity_is_scoped_to_research_run(tmp_path) -> None:
+    db_path = tmp_path / "research.db"
+    store = SQLiteResearchStore(db_path)
+
+    first_state = SummaryState(
+        research_topic="first",
+        execution_traces=[
+            ExecutionTrace(
+                trace_id="trace_shared",
+                task_id=1,
+                status="completed",
+            )
+        ],
+    )
+
+    second_state = SummaryState(
+        research_topic="second",
+        execution_traces=[
+            ExecutionTrace(
+                trace_id="trace_shared",
+                task_id=1,
+                status="completed",
+            )
+        ],
+    )
+
+    first_id = store.save(first_state)
+    second_id = store.save(second_state)
+
+    assert first_id != second_id
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT research_id, trace_id
+            FROM execution_traces
+            WHERE trace_id = ?
+            """,
+            ("trace_shared",),
+        ).fetchall()
+
+    assert set(rows) == {
+        (first_id, "trace_shared"),
+        (second_id, "trace_shared"),
+    }
