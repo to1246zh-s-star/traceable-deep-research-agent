@@ -63,6 +63,7 @@ class DeepResearchAgent:
         )
         self._tool_event_sink_enabled = False
         self._state_lock = Lock()
+        self._last_state: SummaryState | None = None
         self._execution_trace_service = ExecutionTraceService(
             lock=self._state_lock,
         )
@@ -89,6 +90,12 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    @property
+    def last_state(self) -> SummaryState | None:
+        """Return the most recent research state, if available."""
+
+        return getattr(self, "_last_state", None)
+
     def _init_llm(self) -> HelloAgentsLLM:
         """Instantiate HelloAgentsLLM following configuration preferences."""
         llm_kwargs: dict[str, Any] = {"temperature": 0.0}
@@ -138,6 +145,7 @@ class DeepResearchAgent:
     def run(self, topic: str) -> SummaryStateOutput:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
+        self._last_state = state
         state.todo_items = self.planner.plan_todo_list(state)
         self._drain_tool_events(state)
 
@@ -164,6 +172,7 @@ class DeepResearchAgent:
     def run_stream(self, topic: str) -> Iterator[dict[str, Any]]:
         """Execute the workflow yielding incremental progress events."""
         state = SummaryState(research_topic=topic)
+        self._last_state = state
         logger.debug("Starting streaming research: topic=%s", topic)
         yield {"type": "status", "message": "初始化研究流程"}
 
