@@ -146,6 +146,50 @@ export interface ExecutionEventResponse {
   metadata: Record<string, unknown>;
 }
 
+export interface EvidenceResponse {
+  evidence_id: string;
+  task_id: number;
+  trace_id: string;
+  query: string;
+  backend: string;
+  source_title: string | null;
+  source_url: string | null;
+  snippet: string | null;
+  content: string | null;
+  source_rank: number | null;
+  created_at: string;
+}
+
+export interface EvidenceListResponse {
+  research_id: string;
+  evidence: EvidenceResponse[];
+}
+
+export interface EvidenceDetailResponse {
+  research_id: string;
+  evidence: EvidenceResponse;
+}
+
+export interface ClaimResponse {
+  claim_id: string;
+  task_id: number;
+  trace_id: string;
+  text: string;
+  evidence_ids: string[];
+  created_at: string;
+}
+
+export interface ClaimListResponse {
+  research_id: string;
+  claims: ClaimResponse[];
+}
+
+export interface ClaimDetailResponse {
+  research_id: string;
+  claim: ClaimResponse;
+  evidence: EvidenceResponse[];
+}
+
 export interface TraceListResponse {
   research_id: string;
   traces: ExecutionTraceResponse[];
@@ -195,6 +239,44 @@ export function getResearchTrace(
   return requestJson<TraceDetailResponse>(
     `/research/${encodeURIComponent(researchId)}/traces/${encodeURIComponent(
       traceId
+    )}`
+  );
+}
+
+export function listResearchEvidence(
+  researchId: string
+): Promise<EvidenceListResponse> {
+  return requestJson<EvidenceListResponse>(
+    `/research/${encodeURIComponent(researchId)}/evidence`
+  );
+}
+
+export function getResearchEvidence(
+  researchId: string,
+  evidenceId: string
+): Promise<EvidenceDetailResponse> {
+  return requestJson<EvidenceDetailResponse>(
+    `/research/${encodeURIComponent(researchId)}/evidence/${encodeURIComponent(
+      evidenceId
+    )}`
+  );
+}
+
+export function listResearchClaims(
+  researchId: string
+): Promise<ClaimListResponse> {
+  return requestJson<ClaimListResponse>(
+    `/research/${encodeURIComponent(researchId)}/claims`
+  );
+}
+
+export function getResearchClaim(
+  researchId: string,
+  claimId: string
+): Promise<ClaimDetailResponse> {
+  return requestJson<ClaimDetailResponse>(
+    `/research/${encodeURIComponent(researchId)}/claims/${encodeURIComponent(
+      claimId
     )}`
   );
 }

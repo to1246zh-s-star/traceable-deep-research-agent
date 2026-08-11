@@ -416,6 +416,212 @@
           </p>
         </section>
 
+        <section
+          id="evidence-inspector"
+          v-if="researchId"
+          class="evidence-inspector"
+        >
+          <header class="evidence-inspector-header">
+            <div>
+              <p class="trace-eyebrow">Evidence Grounding</p>
+              <h3>Evidence Inspector</h3>
+              <p class="evidence-description">
+                查看任务结论以及支持该结论的检索证据。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="secondary-btn"
+              :disabled="claimLoading"
+              @click="researchId && loadResearchClaims(researchId)"
+            >
+              {{ claimLoading ? "加载中..." : "刷新 Evidence" }}
+            </button>
+          </header>
+
+          <p v-if="claimError" class="trace-error">
+            {{ claimError }}
+          </p>
+
+          <div
+            v-if="researchClaims.length"
+            class="evidence-layout"
+          >
+            <aside class="claim-list">
+              <button
+                v-for="claim in researchClaims"
+                :key="claim.claim_id"
+                type="button"
+                class="claim-list-item"
+                :class="{
+                  active: claim.claim_id === activeClaimId
+                }"
+                @click="selectClaim(claim.claim_id)"
+              >
+                <div class="claim-list-title">
+                  <span>Task {{ claim.task_id }}</span>
+                  <span class="claim-evidence-count">
+                    {{ claim.evidence_ids.length }} evidence
+                  </span>
+                </div>
+
+                <p class="claim-preview">
+                  {{ claim.text }}
+                </p>
+
+                <code>{{ claim.claim_id }}</code>
+              </button>
+            </aside>
+
+            <article class="claim-detail">
+              <div
+                v-if="claimLoading && !activeClaimDetail"
+                class="trace-empty"
+              >
+                正在加载 Claim 与证据…
+              </div>
+
+              <template v-else-if="activeClaimDetail">
+                <header class="claim-detail-header">
+                  <div>
+                    <span class="claim-task-label">
+                      Task {{ activeClaimDetail.claim.task_id }}
+                    </span>
+                    <h4>Research Claim</h4>
+                  </div>
+
+                  <span class="claim-support-count">
+                    {{ activeClaimDetail.evidence.length }} supporting sources
+                  </span>
+                </header>
+
+                <div class="claim-text">
+                  {{ activeClaimDetail.claim.text }}
+                </div>
+
+                <div class="claim-provenance">
+                  <div>
+                    <span>Claim ID</span>
+                    <code>{{ activeClaimDetail.claim.claim_id }}</code>
+                  </div>
+
+                  <div>
+                    <span>Trace</span>
+                    <button
+                      type="button"
+                      class="claim-trace-link"
+                      @click="
+                        openEvidenceTrace(
+                          activeClaimDetail.claim.trace_id
+                        )
+                      "
+                    >
+                      {{ activeClaimDetail.claim.trace_id }}
+                    </button>
+                  </div>
+                </div>
+
+                <section class="supporting-evidence-section">
+                  <div class="event-section-header">
+                    <h4>Supporting Evidence</h4>
+                    <span>
+                      {{ activeClaimDetail.evidence.length }} sources
+                    </span>
+                  </div>
+
+                  <div
+                    v-if="activeClaimDetail.evidence.length"
+                    class="evidence-card-list"
+                  >
+                    <article
+                      v-for="evidence in activeClaimDetail.evidence"
+                      :key="evidence.evidence_id"
+                      class="evidence-card"
+                    >
+                      <header class="evidence-card-header">
+                        <div>
+                          <span class="evidence-rank">
+                            #{{ evidence.source_rank ?? "—" }}
+                          </span>
+                          <span class="evidence-backend">
+                            {{ evidence.backend }}
+                          </span>
+                        </div>
+
+                        <code>{{ evidence.evidence_id }}</code>
+                      </header>
+
+                      <h5>
+                        {{
+                          evidence.source_title ||
+                          "Untitled source"
+                        }}
+                      </h5>
+
+                      <a
+                        v-if="evidence.source_url"
+                        class="evidence-source-link"
+                        :href="evidence.source_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {{ evidence.source_url }}
+                      </a>
+
+                      <p
+                        v-if="evidence.snippet"
+                        class="evidence-snippet"
+                      >
+                        {{ evidence.snippet }}
+                      </p>
+
+                      <div class="evidence-provenance">
+                        <span>
+                          Query: {{ evidence.query }}
+                        </span>
+
+                        <button
+                          type="button"
+                          class="claim-trace-link"
+                          @click="
+                            openEvidenceTrace(evidence.trace_id)
+                          "
+                        >
+                          Trace: {{ evidence.trace_id }}
+                        </button>
+                      </div>
+
+                      <details
+                        v-if="evidence.content"
+                        class="evidence-content"
+                      >
+                        <summary>查看完整抓取内容</summary>
+                        <pre>{{ evidence.content }}</pre>
+                      </details>
+                    </article>
+                  </div>
+
+                  <p v-else class="trace-empty">
+                    当前 Claim 没有关联的 Supporting Evidence。
+                  </p>
+                </section>
+              </template>
+
+              <p v-else class="trace-empty">
+                选择一个 Claim 查看证据链。
+              </p>
+            </article>
+          </div>
+
+          <p
+            v-else-if="!claimLoading && !claimError"
+            class="trace-empty"
+          >
+            当前研究没有可展示的 Claim。
+          </p>
+        </section>
+
         <div class="tasks-section" v-if="todoTasks.length">
           <aside class="tasks-list">
             <h3>任务清单</h3>
@@ -612,8 +818,12 @@
 
 <script lang="ts" setup>
 import {
+  getResearchClaim,
   getResearchTrace,
+  listResearchClaims,
   listResearchTraces,
+  type ClaimDetailResponse,
+  type ClaimResponse,
   type ExecutionTraceResponse,
   type TraceDetailResponse
 } from "./services/api";
@@ -935,6 +1145,12 @@ const activeTraceDetail = ref<TraceDetailResponse | null>(null);
 const traceLoading = ref(false);
 const traceError = ref("");
 
+const researchClaims = ref<ClaimResponse[]>([]);
+const activeClaimId = ref<string | null>(null);
+const activeClaimDetail = ref<ClaimDetailResponse | null>(null);
+const claimLoading = ref(false);
+const claimError = ref("");
+
 function formatDuration(durationMs: number | null): string {
   if (durationMs === null || !Number.isFinite(durationMs)) {
     return "—";
@@ -1059,6 +1275,83 @@ async function loadResearchTraces(
   }
 }
 
+async function selectClaim(
+  claimId: string,
+  targetResearchId = researchId.value
+): Promise<void> {
+  if (!targetResearchId) {
+    return;
+  }
+
+  activeClaimId.value = claimId;
+  claimLoading.value = true;
+  claimError.value = "";
+
+  try {
+    activeClaimDetail.value = await getResearchClaim(
+      targetResearchId,
+      claimId
+    );
+  } catch (err) {
+    activeClaimDetail.value = null;
+    claimError.value =
+      err instanceof Error ? err.message : "Claim 加载失败";
+  } finally {
+    claimLoading.value = false;
+  }
+}
+
+async function loadResearchClaims(
+  targetResearchId: string
+): Promise<void> {
+  claimLoading.value = true;
+  claimError.value = "";
+
+  try {
+    const response = await listResearchClaims(
+      targetResearchId
+    );
+
+    researchClaims.value = response.claims;
+
+    if (!response.claims.length) {
+      activeClaimId.value = null;
+      activeClaimDetail.value = null;
+      return;
+    }
+
+    const firstClaim = response.claims[0];
+
+    await selectClaim(
+      firstClaim.claim_id,
+      targetResearchId
+    );
+  } catch (err) {
+    researchClaims.value = [];
+    activeClaimId.value = null;
+    activeClaimDetail.value = null;
+    claimError.value =
+      err instanceof Error ? err.message : "Claim 列表加载失败";
+  } finally {
+    claimLoading.value = false;
+  }
+}
+
+async function openEvidenceTrace(
+  traceId: string
+): Promise<void> {
+  await selectTrace(traceId);
+
+  requestAnimationFrame(() => {
+    document
+      .getElementById("trace-inspector")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  });
+}
+
 function resetWorkflowState() {
   todoTasks.value = [];
   activeTaskId.value = null;
@@ -1070,6 +1363,13 @@ function resetWorkflowState() {
   activeTraceDetail.value = null;
   traceLoading.value = false;
   traceError.value = "";
+
+  researchClaims.value = [];
+  activeClaimId.value = null;
+  activeClaimDetail.value = null;
+  claimLoading.value = false;
+  claimError.value = "";
+
   summaryHighlight.value = false;
   sourcesHighlight.value = false;
   reportHighlight.value = false;
@@ -1369,7 +1669,10 @@ const handleSubmit = async () => {
             `研究状态已持久化：${storedResearchId}`
           );
 
-          void loadResearchTraces(storedResearchId);
+          void Promise.all([
+            loadResearchTraces(storedResearchId),
+            loadResearchClaims(storedResearchId)
+          ]);
 
           return;
         }
@@ -3159,6 +3462,308 @@ select:focus {
   color: #4338ca;
   font-size: 11px;
   line-height: 1.3;
+}
+
+
+/* Phase 6 — Evidence Grounding */
+
+.evidence-inspector {
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+}
+
+.evidence-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.evidence-inspector-header h3 {
+  margin: 2px 0 4px;
+}
+
+.evidence-description {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.evidence-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.34fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.claim-list-item {
+  width: 100%;
+  padding: 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 0.88);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.claim-list-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.34);
+}
+
+.claim-list-item.active {
+  border-color: rgba(99, 102, 241, 0.52);
+  background: rgba(238, 242, 255, 0.95);
+}
+
+.claim-list-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.claim-evidence-count {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+  font-size: 10px;
+}
+
+.claim-preview {
+  display: -webkit-box;
+  margin: 0 0 8px;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.claim-list-item code {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.claim-detail {
+  min-width: 0;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  padding: 18px;
+  background: #ffffff;
+}
+
+.claim-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.claim-detail-header h4 {
+  margin: 4px 0 0;
+}
+
+.claim-task-label {
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.claim-support-count {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  font-size: 11px;
+}
+
+.claim-text {
+  margin-top: 16px;
+  padding: 15px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.claim-provenance {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.claim-provenance > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.claim-provenance span {
+  color: #94a3b8;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.claim-provenance code {
+  font-size: 11px;
+}
+
+.claim-trace-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.claim-trace-link:hover {
+  text-decoration: underline;
+}
+
+.supporting-evidence-section {
+  margin-top: 22px;
+}
+
+.evidence-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.evidence-card {
+  padding: 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.evidence-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.evidence-card-header > div {
+  display: flex;
+  gap: 6px;
+}
+
+.evidence-rank,
+.evidence-backend {
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.evidence-rank {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0369a1;
+}
+
+.evidence-backend {
+  background: rgba(99, 102, 241, 0.1);
+  color: #4338ca;
+}
+
+.evidence-card-header code {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.evidence-card h5 {
+  margin: 12px 0 6px;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+.evidence-source-link {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #2563eb;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.evidence-source-link:hover {
+  text-decoration: underline;
+}
+
+.evidence-snippet {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.evidence-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.evidence-content {
+  margin-top: 12px;
+}
+
+.evidence-content summary {
+  cursor: pointer;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.evidence-content pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 960px) {
+  .evidence-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-inspector-header {
+    flex-direction: column;
+  }
 }
 
 </style>
