@@ -63,6 +63,57 @@ class ResearchResponse(BaseModel):
     )
 
 
+
+class ExecutionTraceResponse(BaseModel):
+    """Serialized execution trace exposed by the HTTP API."""
+
+    trace_id: str
+    task_id: int
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: float | None = None
+    current_stage: str | None = None
+    retry_count: int = 0
+    error_type: str | None = None
+    error_message: str | None = None
+
+
+class ExecutionEventResponse(BaseModel):
+    """Serialized execution event exposed by the HTTP API."""
+
+    schema_version: int
+    event_id: str
+    trace_id: str
+    timestamp: str
+    task_id: int
+    event_type: str
+    stage: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TraceListResponse(BaseModel):
+    """Response containing all traces for one research run."""
+
+    research_id: str
+    traces: list[ExecutionTraceResponse] = Field(default_factory=list)
+
+
+class TraceDetailResponse(BaseModel):
+    """Response containing one trace and its related execution events."""
+
+    research_id: str
+    trace: ExecutionTraceResponse
+    events: list[ExecutionEventResponse] = Field(default_factory=list)
+
+
+class TraceEventsResponse(BaseModel):
+    """Response containing execution events associated with one trace."""
+
+    research_id: str
+    trace_id: str
+    events: list[ExecutionEventResponse] = Field(default_factory=list)
+
 def _mask_secret(value: Optional[str], visible: int = 4) -> str:
     """Mask sensitive tokens while keeping leading and trailing characters."""
     if not value:
@@ -133,7 +184,10 @@ def create_app() -> FastAPI:
     def health_check() -> Dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/research/{research_id}/traces")
+    @app.get(
+        "/research/{research_id}/traces",
+        response_model=TraceListResponse,
+    )
     def list_research_traces(research_id: str) -> dict[str, Any]:
         """Return execution traces for a stored research run."""
 
@@ -166,40 +220,10 @@ def create_app() -> FastAPI:
             "traces": traces,
         }
 
-    @app.get("/research/{research_id}/traces")
-    def list_research_traces(research_id: str) -> dict[str, Any]:
-        """Return execution traces for a stored research run."""
-
-        state = app.state.research_store.get(research_id)
-
-        if state is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Research run not found",
-            )
-
-        traces = [
-            {
-                "trace_id": trace.trace_id,
-                "task_id": trace.task_id,
-                "status": trace.status,
-                "started_at": trace.started_at,
-                "finished_at": trace.finished_at,
-                "duration_ms": trace.duration_ms,
-                "current_stage": trace.current_stage,
-                "retry_count": trace.retry_count,
-                "error_type": trace.error_type,
-                "error_message": trace.error_message,
-            }
-            for trace in state.execution_traces
-        ]
-
-        return {
-            "research_id": research_id,
-            "traces": traces,
-        }
-
-    @app.get("/research/{research_id}/traces/{trace_id}")
+    @app.get(
+        "/research/{research_id}/traces/{trace_id}",
+        response_model=TraceDetailResponse,
+    )
     def get_research_trace(
         research_id: str,
         trace_id: str,
@@ -230,7 +254,10 @@ def create_app() -> FastAPI:
             **result,
         }
 
-    @app.get("/research/{research_id}/traces/{trace_id}/events")
+    @app.get(
+        "/research/{research_id}/traces/{trace_id}/events",
+        response_model=TraceEventsResponse,
+    )
     def get_research_trace_events(
         research_id: str,
         trace_id: str,
