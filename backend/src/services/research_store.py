@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Protocol
 
-from models import SummaryState
+from models import ExecutionEvent, ExecutionTrace, SummaryState, TodoItem
 
 
 class ResearchStore(Protocol):
@@ -254,14 +254,170 @@ class SQLiteResearchStore:
         return research_id
 
     def get(self, research_id: str) -> SummaryState | None:
-        """Loading is implemented in Phase 4.4."""
+        """Load and reconstruct one research state."""
 
-        raise NotImplementedError
+        with self._lock:
+            with self._connect() as connection:
+                research_row = connection.execute(
+                    """
+                    SELECT
+                        research_topic,
+                        search_query,
+                        research_loop_count,
+                        running_summary,
+                        structured_report,
+                        report_note_id,
+                        report_note_path
+                    FROM research_runs
+                    WHERE research_id = ?
+                    """,
+                    (research_id,),
+                ).fetchone()
+
+                if research_row is None:
+                    return None
+
+                todo_rows = connection.execute(
+                    """
+                    SELECT
+                        task_id,
+                        title,
+                        intent,
+                        query,
+                        status,
+                        summary,
+                        sources_summary,
+                        notices_json,
+                        note_id,
+                        note_path,
+                        stream_token
+                    FROM todo_items
+                    WHERE research_id = ?
+                    ORDER BY task_id
+                    """,
+                    (research_id,),
+                ).fetchall()
+
+                trace_rows = connection.execute(
+                    """
+                    SELECT
+                        trace_id,
+                        task_id,
+                        status,
+                        started_at,
+                        finished_at,
+                        duration_ms,
+                        current_stage,
+                        retry_count,
+                        error_type,
+                        error_message
+                    FROM execution_traces
+                    WHERE research_id = ?
+                    ORDER BY task_id, trace_id
+                    """,
+                    (research_id,),
+                ).fetchall()
+
+                event_rows = connection.execute(
+                    """
+                    SELECT
+                        event_id,
+                        trace_id,
+                        task_id,
+                        schema_version,
+                        timestamp,
+                        event_type,
+                        stage,
+                        metadata_json
+                    FROM execution_events
+                    WHERE research_id = ?
+                    ORDER BY timestamp, event_id
+                    """,
+                    (research_id,),
+                ).fetchall()
+
+        todo_items = [
+            TodoItem(
+                id=row["task_id"],
+                title=row["title"],
+                intent=row["intent"],
+                query=row["query"],
+                status=row["status"],
+                summary=row["summary"],
+                sources_summary=row["sources_summary"],
+                notices=json.loads(row["notices_json"]),
+                note_id=row["note_id"],
+                note_path=row["note_path"],
+                stream_token=row["stream_token"],
+            )
+            for row in todo_rows
+        ]
+
+        execution_traces = [
+            ExecutionTrace(
+                trace_id=row["trace_id"],
+                task_id=row["task_id"],
+                status=row["status"],
+                started_at=row["started_at"],
+                finished_at=row["finished_at"],
+                duration_ms=row["duration_ms"],
+                current_stage=row["current_stage"],
+                retry_count=row["retry_count"],
+                error_type=row["error_type"],
+                error_message=row["error_message"],
+            )
+            for row in trace_rows
+        ]
+
+        execution_event_history = [
+            ExecutionEvent(
+                event_id=row["event_id"],
+                trace_id=row["trace_id"],
+                task_id=row["task_id"],
+                schema_version=row["schema_version"],
+                timestamp=row["timestamp"],
+                event_type=row["event_type"],
+                stage=row["stage"],
+                metadata=json.loads(row["metadata_json"]),
+            )
+            for row in event_rows
+        ]
+
+        return SummaryState(
+            research_topic=research_row["research_topic"],
+            search_query=research_row["search_query"],
+            research_loop_count=research_row["research_loop_count"],
+            running_summary=research_row["running_summary"],
+            todo_items=todo_items,
+            execution_traces=execution_traces,
+            execution_events=[],
+            execution_event_history=execution_event_history,
+            structured_report=research_row["structured_report"],
+            report_note_id=research_row["report_note_id"],
+            report_note_path=research_row["report_note_path"],
+        )
 
     def list(self) -> list[tuple[str, SummaryState]]:
-        """Listing is implemented after state loading."""
+        """Return all stored research states."""
 
-        raise NotImplementedError
+        with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT research_id
+                    FROM research_runs
+                    ORDER BY rowid
+                    """
+                ).fetchall()
+
+        result: list[tuple[str, SummaryState]] = []
+
+        for row in rows:
+            state = self.get(row["research_id"])
+            if state is not None:
+                result.append((row["research_id"], state))
+
+        return result
 
 
 
