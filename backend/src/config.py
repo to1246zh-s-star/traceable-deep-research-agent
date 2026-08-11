@@ -2,7 +2,10 @@ import os
 from enum import Enum
 from typing import Any, Optional
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+load_dotenv()
 
 
 class SearchAPI(Enum):
