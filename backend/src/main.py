@@ -223,6 +223,55 @@ def create_app() -> FastAPI:
             **result,
         }
 
+    @app.get("/research/{research_id}/traces/{trace_id}/events")
+    def get_research_trace_events(
+        research_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Return execution events associated with one trace."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        trace_result = app.state.execution_trace_service.get_trace(
+            state,
+            trace_id,
+        )
+
+        if trace_result["trace"] is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Execution trace not found",
+            )
+
+        events = app.state.execution_trace_service.get_events(
+            state,
+            trace_id=trace_id,
+        )
+
+        return {
+            "research_id": research_id,
+            "trace_id": trace_id,
+            "events": [
+                {
+                    "schema_version": event.schema_version,
+                    "event_id": event.event_id,
+                    "trace_id": event.trace_id,
+                    "timestamp": event.timestamp,
+                    "task_id": event.task_id,
+                    "event_type": event.event_type,
+                    "stage": event.stage,
+                    "metadata": event.metadata,
+                }
+                for event in events
+            ],
+        }
+
     @app.post("/research", response_model=ResearchResponse)
     def run_research(payload: ResearchRequest) -> ResearchResponse:
         try:

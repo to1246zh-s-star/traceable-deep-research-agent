@@ -18,6 +18,7 @@ class ExecutionTraceService:
         self,
         state: SummaryState,
         *,
+        trace_id: str | None = None,
         task_id: int | None = None,
         event_type: str | None = None,
     ) -> list:
@@ -25,6 +26,13 @@ class ExecutionTraceService:
 
         with self._lock:
             events = list(state.execution_event_history)
+
+        if trace_id is not None:
+            events = [
+                event
+                for event in events
+                if event.trace_id == trace_id
+            ]
 
         if task_id is not None:
             events = [

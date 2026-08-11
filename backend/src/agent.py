@@ -367,6 +367,7 @@ class DeepResearchAgent:
         self,
         state: SummaryState,
         *,
+        trace_id: str | None = None,
         task_id: int | None = None,
         event_type: str | None = None,
     ) -> list[ExecutionEvent]:
@@ -374,6 +375,7 @@ class DeepResearchAgent:
 
         return self._get_execution_trace_service().get_events(
             state,
+            trace_id=trace_id,
             task_id=task_id,
             event_type=event_type,
         )

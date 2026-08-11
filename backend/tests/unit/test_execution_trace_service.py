@@ -140,3 +140,48 @@ def test_service_summarizes_execution_events():
     assert result["event_counts"]["task_completed"] == 1
     assert result["event_counts"]["task_failed"] == 1
     assert result["event_counts"]["task_skipped"] == 1
+
+
+def test_service_filters_execution_events_by_trace_id():
+
+    service = ExecutionTraceService(
+        lock=Lock()
+    )
+
+    state = SummaryState(
+        research_topic="test"
+    )
+
+    state.execution_event_history.extend(
+        [
+            ExecutionEvent(
+                trace_id="trace_1",
+                task_id=1,
+                event_type="task_started",
+                stage="executor",
+            ),
+            ExecutionEvent(
+                trace_id="trace_1",
+                task_id=1,
+                event_type="task_completed",
+                stage="executor",
+            ),
+            ExecutionEvent(
+                trace_id="trace_2",
+                task_id=2,
+                event_type="task_failed",
+                stage="search",
+            ),
+        ]
+    )
+
+    result = service.get_events(
+        state,
+        trace_id="trace_1",
+    )
+
+    assert len(result) == 2
+    assert all(
+        event.trace_id == "trace_1"
+        for event in result
+    )
