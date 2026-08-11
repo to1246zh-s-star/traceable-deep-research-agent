@@ -32,7 +32,7 @@ from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
 from services.planner import PlanningService
 from services.reporter import ReportingService
-from services.search import dispatch_search, prepare_research_context
+from services.search import dispatch_search, extract_evidence, prepare_research_context
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
 
@@ -591,6 +591,17 @@ class DeepResearchAgent:
         else:
             if not emit_stream:
                 self._drain_tool_events(state)
+
+        evidence_items = extract_evidence(
+            search_result,
+            task_id=task.id,
+            trace_id=trace.trace_id,
+            query=task.query,
+            backend=backend,
+        )
+
+        with self._state_lock:
+            state.evidence_items.extend(evidence_items)
 
         sources_summary, context = prepare_research_context(
             search_result,

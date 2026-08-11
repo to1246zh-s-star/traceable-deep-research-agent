@@ -291,3 +291,83 @@ def test_summarization_exception_records_failed_execution_trace(monkeypatch) -> 
     assert trace.duration_ms >= 0
     assert trace.error_type == "provider_error"
     assert trace.error_message == "summary generation failed"
+
+
+def test_successful_task_records_traceable_evidence(monkeypatch) -> None:
+    def fake_dispatch_search(query, config, loop_count):
+        return (
+            {
+                "results": [
+                    {
+                        "title": "Evidence source",
+                        "url": "https://example.com/evidence",
+                        "content": "Search result evidence snippet.",
+                        "raw_content": "Full evidence page content.",
+                    }
+                ],
+                "backend": "fake",
+                "answer": None,
+                "notices": [],
+            },
+            [],
+            None,
+            "fake",
+        )
+
+    def fake_prepare_research_context(search_result, answer_text, config):
+        return (
+            "Evidence source summary",
+            "Evidence research context",
+        )
+
+    monkeypatch.setattr(
+        agent_module,
+        "dispatch_search",
+        fake_dispatch_search,
+    )
+    monkeypatch.setattr(
+        agent_module,
+        "prepare_research_context",
+        fake_prepare_research_context,
+    )
+
+    research_agent = build_test_agent()
+    research_agent.summarizer = DummySummarizer()
+
+    state = SummaryState(research_topic="Evidence integration")
+    task = TodoItem(
+        id=5,
+        title="Evidence task",
+        intent="Verify traceable evidence",
+        query="traceable evidence query",
+    )
+    state.todo_items = [task]
+
+    events = list(
+        research_agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
+        )
+    )
+
+    assert events == []
+    assert task.status == "completed"
+
+    assert len(state.execution_traces) == 1
+    assert len(state.evidence_items) == 1
+
+    trace = state.execution_traces[0]
+    evidence = state.evidence_items[0]
+
+    assert evidence.task_id == task.id
+    assert evidence.trace_id == trace.trace_id
+
+    assert evidence.query == task.query
+    assert evidence.backend == "fake"
+
+    assert evidence.source_title == "Evidence source"
+    assert evidence.source_url == "https://example.com/evidence"
+    assert evidence.snippet == "Search result evidence snippet."
+    assert evidence.content == "Full evidence page content."
+    assert evidence.source_rank == 1

@@ -8,6 +8,7 @@ from typing import Any, Optional, Tuple
 from hello_agents.tools import SearchTool
 
 from config import Configuration
+from models import Evidence
 from utils import (
     deduplicate_and_format_sources,
     format_sources,
@@ -75,6 +76,42 @@ def dispatch_search(
     )
 
     return payload, notices, answer_text, backend_label
+
+
+def extract_evidence(
+    search_result: dict[str, Any] | None,
+    *,
+    task_id: int,
+    trace_id: str,
+    query: str,
+    backend: str,
+) -> list[Evidence]:
+    """Convert structured search results into traceable evidence items."""
+
+    if not search_result:
+        return []
+
+    evidence_items: list[Evidence] = []
+
+    for rank, item in enumerate(search_result.get("results", []), start=1):
+        if not isinstance(item, dict):
+            continue
+
+        evidence_items.append(
+            Evidence(
+                task_id=task_id,
+                trace_id=trace_id,
+                query=query,
+                backend=backend,
+                source_title=item.get("title"),
+                source_url=item.get("url"),
+                snippet=item.get("content"),
+                content=item.get("raw_content"),
+                source_rank=rank,
+            )
+        )
+
+    return evidence_items
 
 
 def prepare_research_context(
