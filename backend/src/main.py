@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from threading import Lock
 from typing import Any, Dict, Iterator, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from config import Configuration, SearchAPI
 from agent import DeepResearchAgent
+from services.execution_trace import ExecutionTraceService
 from services.research_store import InMemoryResearchStore
 
 # 添加控制台日志处理程序
@@ -83,6 +85,9 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 def create_app() -> FastAPI:
     app = FastAPI(title="HelloAgents Deep Researcher")
     app.state.research_store = InMemoryResearchStore()
+    app.state.execution_trace_service = ExecutionTraceService(
+        lock=Lock(),
+    )
 
     app.add_middleware(
         CORSMiddleware,
@@ -185,6 +190,37 @@ def create_app() -> FastAPI:
         return {
             "research_id": research_id,
             "traces": traces,
+        }
+
+    @app.get("/research/{research_id}/traces/{trace_id}")
+    def get_research_trace(
+        research_id: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Return one execution trace and its related events."""
+
+        state = app.state.research_store.get(research_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        result = app.state.execution_trace_service.serialize_trace(
+            state,
+            trace_id,
+        )
+
+        if result["trace"]["trace_id"] is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Execution trace not found",
+            )
+
+        return {
+            "research_id": research_id,
+            **result,
         }
 
     @app.post("/research", response_model=ResearchResponse)
