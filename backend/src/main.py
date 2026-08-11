@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from config import Configuration, SearchAPI
 from agent import DeepResearchAgent
+from services.research_store import InMemoryResearchStore
 
 # 添加控制台日志处理程序
 logger.add(
@@ -46,6 +47,10 @@ class ResearchRequest(BaseModel):
 class ResearchResponse(BaseModel):
     """HTTP response containing the generated report and structured tasks."""
 
+    research_id: str = Field(
+        ...,
+        description="Identifier used to inspect the stored research run",
+    )
     report_markdown: str = Field(
         ..., description="Markdown-formatted research report including sections"
     )
@@ -77,6 +82,7 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="HelloAgents Deep Researcher")
+    app.state.research_store = InMemoryResearchStore()
 
     app.add_middleware(
         CORSMiddleware,
@@ -121,6 +127,12 @@ def create_app() -> FastAPI:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)
             result = agent.run(payload.topic)
+
+            state = agent.last_state
+            if state is None:
+                raise RuntimeError("Research state was not captured")
+
+            research_id = app.state.research_store.save(state)
         except ValueError as exc:  # Likely due to unsupported configuration
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:  # pragma: no cover - defensive guardrail
@@ -142,6 +154,7 @@ def create_app() -> FastAPI:
         ]
 
         return ResearchResponse(
+            research_id=research_id,
             report_markdown=(result.report_markdown or result.running_summary or ""),
             todo_items=todo_payload,
         )
