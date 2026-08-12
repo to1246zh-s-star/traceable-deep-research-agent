@@ -72,6 +72,29 @@ class Claim:
 
 
 @dataclass(kw_only=True)
+class AtomicClaim:
+    """Fine-grained factual claim grounded in specific Evidence."""
+
+    atomic_claim_id: str = field(
+        default_factory=lambda: f"aclm_{uuid.uuid4().hex[:12]}"
+    )
+
+    parent_claim_id: str
+
+    task_id: int
+    trace_id: str
+
+    text: str
+    evidence_ids: list[str] = field(default_factory=list)
+
+    grounding_status: str = field(default="ungrounded")
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class ExecutionTrace:
     """Runtime trace for a single TODO task execution."""
 
