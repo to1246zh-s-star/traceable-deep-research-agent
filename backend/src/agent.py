@@ -39,6 +39,10 @@ from models import (
     TodoItem,
 )
 from services.decision_case_extractor import DecisionCaseExtractor
+from services.decision_input_builder import (
+    build_evidence_assessments,
+    build_evidence_signals,
+)
 from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
@@ -49,6 +53,7 @@ from services.adaptive_research import (
     select_research_gaps,
 )
 from services.planner import PlanningService
+from services.semantic_signal_extractor import SemanticSignalExtractor
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
 from services.summarizer import SummarizationService
@@ -104,6 +109,15 @@ class DeepResearchAgent:
             ),
         )
 
+        self.semantic_signal_agent = self._create_tool_aware_agent(
+            name="证据语义判定专家",
+            system_prompt=(
+                "Interpret supplied evidence conservatively. "
+                "Determine only evidence direction and strength, "
+                "and return exactly the requested JSON."
+            ),
+        )
+
         self._summarizer_factory: Callable[[], ToolAwareSimpleAgent] = lambda: self._create_tool_aware_agent(  # noqa: E501
             name="任务总结专家",
             system_prompt=task_summarizer_instructions.strip(),
@@ -114,6 +128,10 @@ class DeepResearchAgent:
         self.reporting = ReportingService(self.report_agent, self.config)
         self.decision_case_extractor = DecisionCaseExtractor(
             self.decision_case_agent,
+            self.config,
+        )
+        self.semantic_signal_extractor = SemanticSignalExtractor(
+            self.semantic_signal_agent,
             self.config,
         )
         self._last_search_notices: list[str] = []
@@ -129,6 +147,81 @@ class DeepResearchAgent:
 
         return self.decision_case_extractor.extract(
             research_topic,
+        )
+
+    def extract_semantic_signals(
+        self,
+        state: SummaryState,
+        decision: DecisionCase,
+        proposals: list[EvidenceSignal],
+    ) -> list[EvidenceSignal]:
+        """Interpret evidence proposals into semantic signal directions."""
+
+        return self.semantic_signal_extractor.extract(
+            state,
+            decision,
+            proposals,
+        )
+
+    def execute_decision_intelligence(
+        self,
+        state: SummaryState,
+        *,
+        constraint_results: dict[str, dict[str, bool]] | None = None,
+        research_budget: ResearchBudget | None = None,
+        research_usage: ResearchUsage | None = None,
+    ) -> SummaryState:
+        """
+        Run the complete V3 decision-intelligence enrichment pass.
+
+        This method assumes research evidence has already been collected.
+        If no DecisionCase is attached, the research state is returned
+        unchanged.
+
+        Semantic interpretation is optional enrichment: if it fails, the
+        conservative neutral evidence proposals are preserved so the
+        decision pipeline remains incomplete rather than inventing scores.
+        """
+
+        decision = state.decision_case
+
+        if decision is None:
+            return state
+
+        assessments = build_evidence_assessments(
+            state,
+            decision,
+        )
+        state.evidence_assessments = assessments
+
+        proposals = build_evidence_signals(
+            state,
+            decision,
+        )
+
+        try:
+            semantic_signals = self.extract_semantic_signals(
+                state,
+                decision,
+                proposals,
+            )
+        except Exception:
+            logger.exception(
+                "Semantic signal extraction failed; "
+                "using conservative neutral proposals"
+            )
+            semantic_signals = proposals
+
+        state.evidence_signals = semantic_signals
+
+        return self.execute_decision_pipeline(
+            state,
+            decision,
+            constraint_results=constraint_results,
+            evidence_signals=semantic_signals,
+            evidence_assessments=assessments,
+            research_budget=research_budget,
+            research_usage=research_usage,
         )
 
     def execute_decision_pipeline(
