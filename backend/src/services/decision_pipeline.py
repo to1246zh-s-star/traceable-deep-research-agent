@@ -3,6 +3,7 @@
 from models import (
     CandidateCriterionScore,
     DecisionCase,
+    DecisionComparison,
     EvidenceAssessment,
     EvidenceSignal,
     ReadinessSnapshot,
@@ -64,11 +65,26 @@ def run_decision_pipeline(
         constraint_results=constraint_results,
     )
 
-    comparison = compare_candidates(
-        decision,
-        evaluation,
-        criterion_scores,
-    )
+    try:
+        comparison = compare_candidates(
+            decision,
+            evaluation,
+            criterion_scores,
+        )
+    except ValueError as exc:
+        if "missing score for candidate" not in str(exc):
+            raise
+
+        comparison = DecisionComparison(
+            decision_id=decision.decision_id,
+            status="incomplete",
+            excluded_candidate_ids=list(
+                evaluation.disqualified_candidate_ids
+            ),
+            unresolved_candidate_ids=list(
+                evaluation.unresolved_candidate_ids
+            ),
+        )
 
     analysis = analyze_research(
         decision,
