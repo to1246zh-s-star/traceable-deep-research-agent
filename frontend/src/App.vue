@@ -166,6 +166,161 @@
         </div>
 
         <section
+          id="research-replay"
+          v-if="researchId"
+          class="replay-inspector"
+        >
+          <header class="replay-header">
+            <div>
+              <p class="trace-eyebrow">Decision Intelligence</p>
+              <h3>Research Replay</h3>
+              <p class="replay-description">
+                回放从研究任务、执行 Trace 到 Evidence 与 Claim 的完整研究过程。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="secondary-btn"
+              :disabled="replayLoading"
+              @click="researchId && loadResearchReplay(researchId)"
+            >
+              {{ replayLoading ? "加载中..." : "刷新 Replay" }}
+            </button>
+          </header>
+
+          <p v-if="replayError" class="trace-error">
+            {{ replayError }}
+          </p>
+
+          <template v-if="researchReplay">
+            <div class="replay-summary-grid">
+              <div class="replay-metric">
+                <span>Tasks</span>
+                <strong>{{ researchReplay.task_count }}</strong>
+              </div>
+
+              <div class="replay-metric">
+                <span>Traces</span>
+                <strong>{{ researchReplay.trace_count }}</strong>
+              </div>
+
+              <div class="replay-metric">
+                <span>Claims</span>
+                <strong>{{ researchReplay.claim_count }}</strong>
+              </div>
+
+              <div class="replay-metric">
+                <span>Evidence</span>
+                <strong>{{ researchReplay.evidence_count }}</strong>
+              </div>
+            </div>
+
+            <div class="replay-layout">
+              <section class="replay-task-section">
+                <div class="event-section-header">
+                  <h4>Research Tasks</h4>
+                  <span>{{ researchReplay.tasks.length }} tasks</span>
+                </div>
+
+                <div class="replay-task-list">
+                  <button
+                    v-for="task in researchReplay.tasks"
+                    :key="task.task_id"
+                    type="button"
+                    class="replay-task-card"
+                    @click="openReplayTask(task)"
+                  >
+                    <div class="replay-task-title">
+                      <span>Task {{ task.task_id }}</span>
+
+                      <span
+                        class="trace-status"
+                        :class="`trace-status-${task.status}`"
+                      >
+                        {{ task.status }}
+                      </span>
+                    </div>
+
+                    <strong>{{ task.title }}</strong>
+
+                    <p>{{ task.intent }}</p>
+
+                    <code>{{ task.query }}</code>
+
+                    <div class="replay-artifact-counts">
+                      <span>{{ task.trace_ids.length }} traces</span>
+                      <span>{{ task.claim_ids.length }} claims</span>
+                      <span>{{ task.evidence_ids.length }} evidence</span>
+                    </div>
+                  </button>
+                </div>
+              </section>
+
+              <section class="replay-timeline-section">
+                <div class="event-section-header">
+                  <h4>Research Timeline</h4>
+                  <span>{{ researchReplay.timeline.length }} events</span>
+                </div>
+
+                <ol
+                  v-if="researchReplay.timeline.length"
+                  class="replay-timeline"
+                >
+                  <li
+                    v-for="(event, index) in researchReplay.timeline"
+                    :key="`${event.reference_id || event.event_type}-${index}`"
+                    class="replay-event"
+                  >
+                    <span class="replay-event-node"></span>
+
+                    <button
+                      type="button"
+                      class="replay-event-card"
+                      :class="{ clickable: !!event.trace_id }"
+                      @click="openReplayEvent(event.trace_id)"
+                    >
+                      <div class="replay-event-header">
+                        <strong>{{ event.event_type }}</strong>
+
+                        <time>
+                          {{ formatTraceTimestamp(event.timestamp) }}
+                        </time>
+                      </div>
+
+                      <p v-if="event.summary">
+                        {{ event.summary }}
+                      </p>
+
+                      <div class="replay-event-meta">
+                        <span v-if="event.task_id !== null">
+                          Task {{ event.task_id }}
+                        </span>
+
+                        <code v-if="event.reference_id">
+                          {{ event.reference_id }}
+                        </code>
+                      </div>
+                    </button>
+                  </li>
+                </ol>
+
+                <p v-else class="trace-empty">
+                  当前研究暂无可回放事件。
+                </p>
+              </section>
+            </div>
+          </template>
+
+          <p
+            v-else-if="!replayLoading && !replayError"
+            class="trace-empty"
+          >
+            当前研究暂无 Replay 数据。
+          </p>
+        </section>
+
+        <section
           id="trace-inspector"
           v-if="researchId"
           class="trace-inspector"
@@ -819,12 +974,15 @@
 <script lang="ts" setup>
 import {
   getResearchClaim,
+  getResearchReplay,
   getResearchTrace,
   listResearchClaims,
   listResearchTraces,
   type ClaimDetailResponse,
   type ClaimResponse,
   type ExecutionTraceResponse,
+  type ResearchReplayResponse,
+  type ResearchReplayTaskResponse,
   type TraceDetailResponse
 } from "./services/api";
 import { computed, onBeforeUnmount, reactive, ref } from "vue";
@@ -1139,6 +1297,9 @@ async function copyNotePath(path: string | null | undefined) {
 }
 
 const researchId = ref<string | null>(null);
+const researchReplay = ref<ResearchReplayResponse | null>(null);
+const replayLoading = ref(false);
+const replayError = ref("");
 const executionTraces = ref<ExecutionTraceResponse[]>([]);
 const activeTraceId = ref<string | null>(null);
 const activeTraceDetail = ref<TraceDetailResponse | null>(null);
@@ -1242,6 +1403,50 @@ async function selectTrace(
   } finally {
     traceLoading.value = false;
   }
+}
+
+async function loadResearchReplay(
+  targetResearchId: string
+): Promise<void> {
+  replayLoading.value = true;
+  replayError.value = "";
+
+  try {
+    researchReplay.value = await getResearchReplay(
+      targetResearchId
+    );
+  } catch (err) {
+    researchReplay.value = null;
+
+    replayError.value =
+      err instanceof Error
+        ? err.message
+        : "加载 Research Replay 失败";
+  } finally {
+    replayLoading.value = false;
+  }
+}
+
+async function openReplayTask(
+  task: ResearchReplayTaskResponse
+): Promise<void> {
+  const traceId = task.trace_ids[0];
+
+  if (!traceId) {
+    return;
+  }
+
+  await openEvidenceTrace(traceId);
+}
+
+async function openReplayEvent(
+  traceId: string | null
+): Promise<void> {
+  if (!traceId) {
+    return;
+  }
+
+  await openEvidenceTrace(traceId);
 }
 
 async function loadResearchTraces(
@@ -1358,6 +1563,8 @@ function resetWorkflowState() {
   reportMarkdown.value = "";
   progressLogs.value = [];
   researchId.value = null;
+  researchReplay.value = null;
+  replayError.value = "";
   executionTraces.value = [];
   activeTraceId.value = null;
   activeTraceDetail.value = null;
@@ -1671,7 +1878,8 @@ const handleSubmit = async () => {
 
           void Promise.all([
             loadResearchTraces(storedResearchId),
-            loadResearchClaims(storedResearchId)
+            loadResearchClaims(storedResearchId),
+            loadResearchReplay(storedResearchId)
           ]);
 
           return;
@@ -3879,5 +4087,247 @@ select:focus {
 
 .tool-entry-summary:hover {
   background: rgba(238, 242, 255, 0.7);
+}
+</style>
+
+<style scoped>
+.replay-inspector {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(238, 242, 255, 0.72),
+      rgba(248, 250, 252, 0.9)
+    );
+}
+
+.replay-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.replay-header h3 {
+  margin: 4px 0 0;
+}
+
+.replay-description {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.replay-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.replay-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.replay-metric span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.replay-metric strong {
+  color: #1e293b;
+  font-size: 22px;
+}
+
+.replay-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.4fr);
+  gap: 22px;
+  margin-top: 22px;
+}
+
+.replay-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.replay-task-card {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  text-align: left;
+}
+
+.replay-task-card:hover {
+  border-color: rgba(79, 70, 229, 0.4);
+  background: rgba(238, 242, 255, 0.75);
+}
+
+.replay-task-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.replay-task-card > strong {
+  display: block;
+  margin-top: 10px;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.replay-task-card p {
+  margin: 7px 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.replay-task-card code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #475569;
+  font-size: 10px;
+}
+
+.replay-artifact-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.replay-artifact-counts span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  color: #4338ca;
+  font-size: 9px;
+}
+
+.replay-timeline {
+  position: relative;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.replay-event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.replay-event::before {
+  position: absolute;
+  top: 16px;
+  bottom: -4px;
+  left: 6px;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.35);
+  content: "";
+}
+
+.replay-event:last-child::before {
+  display: none;
+}
+
+.replay-event-node {
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 12px;
+  margin-left: 2px;
+  border: 2px solid #6366f1;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.replay-event-card {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
+  font: inherit;
+  text-align: left;
+}
+
+.replay-event-card.clickable {
+  cursor: pointer;
+}
+
+.replay-event-card.clickable:hover {
+  border-color: rgba(79, 70, 229, 0.36);
+  background: rgba(238, 242, 255, 0.72);
+}
+
+.replay-event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.replay-event-header strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.replay-event-header time {
+  color: #94a3b8;
+  font-size: 9px;
+}
+
+.replay-event-card p {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.replay-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 9px;
+}
+
+.replay-event-meta code {
+  color: #94a3b8;
+}
+
+@media (max-width: 960px) {
+  .replay-header {
+    flex-direction: column;
+  }
+
+  .replay-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .replay-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

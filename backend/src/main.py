@@ -170,6 +170,46 @@ class TraceEventsResponse(BaseModel):
     trace_id: str
     events: list[ExecutionEventResponse] = Field(default_factory=list)
 
+class ResearchReplayTaskResponse(BaseModel):
+    """One research task in replay order."""
+
+    task_id: int
+    title: str
+    intent: str
+    query: str
+    status: str
+
+    trace_ids: list[str] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ResearchReplayEventResponse(BaseModel):
+    """Normalized replay event across planning, execution and grounding."""
+
+    timestamp: str | None = None
+    event_type: str
+    task_id: int | None = None
+    trace_id: str | None = None
+    reference_id: str | None = None
+    summary: str | None = None
+
+
+class ResearchReplayResponse(BaseModel):
+    """Aggregated replay view for one stored research run."""
+
+    research_id: str
+    research_topic: str
+
+    task_count: int
+    trace_count: int
+    claim_count: int
+    evidence_count: int
+
+    tasks: list[ResearchReplayTaskResponse] = Field(default_factory=list)
+    timeline: list[ResearchReplayEventResponse] = Field(default_factory=list)
+
+
 def _serialize_evidence(evidence: Any) -> dict[str, Any]:
     return {
         "evidence_id": evidence.evidence_id,
@@ -194,6 +234,173 @@ def _serialize_claim(claim: Any) -> dict[str, Any]:
         "text": claim.text,
         "evidence_ids": list(claim.evidence_ids),
         "created_at": claim.created_at,
+    }
+
+
+def _build_research_replay(
+    research_id: str,
+    state: Any,
+) -> dict[str, Any]:
+    """Build deterministic task-centric replay data from stored research state."""
+
+    traces_by_task: dict[int, list[Any]] = {}
+
+    for trace in state.execution_traces:
+        traces_by_task.setdefault(
+            trace.task_id,
+            [],
+        ).append(trace)
+
+    claims_by_task: dict[int, list[Any]] = {}
+
+    for claim in state.claims:
+        claims_by_task.setdefault(
+            claim.task_id,
+            [],
+        ).append(claim)
+
+    evidence_by_task: dict[int, list[Any]] = {}
+
+    for evidence in state.evidence_items:
+        evidence_by_task.setdefault(
+            evidence.task_id,
+            [],
+        ).append(evidence)
+
+    tasks: list[dict[str, Any]] = []
+
+    for task in state.todo_items:
+        task_traces = traces_by_task.get(
+            task.id,
+            [],
+        )
+        task_claims = claims_by_task.get(
+            task.id,
+            [],
+        )
+        task_evidence = evidence_by_task.get(
+            task.id,
+            [],
+        )
+
+        tasks.append(
+            {
+                "task_id": task.id,
+                "title": task.title,
+                "intent": task.intent,
+                "query": task.query,
+                "status": task.status,
+                "trace_ids": [
+                    trace.trace_id
+                    for trace in task_traces
+                ],
+                "claim_ids": [
+                    claim.claim_id
+                    for claim in task_claims
+                ],
+                "evidence_ids": [
+                    evidence.evidence_id
+                    for evidence in task_evidence
+                ],
+            }
+        )
+
+    timeline: list[dict[str, Any]] = []
+
+    for trace in state.execution_traces:
+        timeline.append(
+            {
+                "timestamp": trace.started_at,
+                "event_type": "trace_started",
+                "task_id": trace.task_id,
+                "trace_id": trace.trace_id,
+                "reference_id": trace.trace_id,
+                "summary": (
+                    f"Task {trace.task_id} execution started"
+                ),
+            }
+        )
+
+        if trace.finished_at:
+            timeline.append(
+                {
+                    "timestamp": trace.finished_at,
+                    "event_type": (
+                        "trace_completed"
+                        if trace.status == "completed"
+                        else "trace_finished"
+                    ),
+                    "task_id": trace.task_id,
+                    "trace_id": trace.trace_id,
+                    "reference_id": trace.trace_id,
+                    "summary": (
+                        f"Task {trace.task_id} execution "
+                        f"finished with status {trace.status}"
+                    ),
+                }
+            )
+
+    for event in state.execution_events:
+        timeline.append(
+            {
+                "timestamp": event.timestamp,
+                "event_type": event.event_type,
+                "task_id": event.task_id,
+                "trace_id": event.trace_id,
+                "reference_id": event.event_id,
+                "summary": event.stage,
+            }
+        )
+
+    for evidence in state.evidence_items:
+        timeline.append(
+            {
+                "timestamp": evidence.created_at,
+                "event_type": "evidence_captured",
+                "task_id": evidence.task_id,
+                "trace_id": evidence.trace_id,
+                "reference_id": evidence.evidence_id,
+                "summary": (
+                    evidence.source_title
+                    or evidence.source_url
+                    or "Evidence captured"
+                ),
+            }
+        )
+
+    for claim in state.claims:
+        timeline.append(
+            {
+                "timestamp": claim.created_at,
+                "event_type": "claim_grounded",
+                "task_id": claim.task_id,
+                "trace_id": claim.trace_id,
+                "reference_id": claim.claim_id,
+                "summary": claim.text,
+            }
+        )
+
+    timeline.sort(
+        key=lambda item: (
+            item["timestamp"] is None,
+            item["timestamp"] or "",
+            item["task_id"]
+            if item["task_id"] is not None
+            else -1,
+            item["event_type"],
+            item["reference_id"] or "",
+        )
+    )
+
+    return {
+        "research_id": research_id,
+        "research_topic": state.research_topic,
+        "task_count": len(state.todo_items),
+        "trace_count": len(state.execution_traces),
+        "claim_count": len(state.claims),
+        "evidence_count": len(state.evidence_items),
+        "tasks": tasks,
+        "timeline": timeline,
     }
 
 
@@ -269,6 +476,31 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def health_check() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.get(
+        "/research/{research_id}/replay",
+        response_model=ResearchReplayResponse,
+    )
+    def get_research_replay(
+        research_id: str,
+    ) -> dict[str, Any]:
+        """Return an aggregated replay of one stored research run."""
+
+        state = app.state.research_store.get(
+            research_id
+        )
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        return _build_research_replay(
+            research_id,
+            state,
+        )
+
 
     @app.get(
         "/research/{research_id}/evidence",

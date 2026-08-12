@@ -292,3 +292,42 @@ export function getResearchTraceEvents(
   );
 }
 
+
+export interface ResearchReplayTaskResponse {
+  task_id: number;
+  title: string;
+  intent: string;
+  query: string;
+  status: string;
+  trace_ids: string[];
+  claim_ids: string[];
+  evidence_ids: string[];
+}
+
+export interface ResearchReplayEventResponse {
+  timestamp: string | null;
+  event_type: string;
+  task_id: number | null;
+  trace_id: string | null;
+  reference_id: string | null;
+  summary: string | null;
+}
+
+export interface ResearchReplayResponse {
+  research_id: string;
+  research_topic: string;
+  task_count: number;
+  trace_count: number;
+  claim_count: number;
+  evidence_count: number;
+  tasks: ResearchReplayTaskResponse[];
+  timeline: ResearchReplayEventResponse[];
+}
+
+export function getResearchReplay(
+  researchId: string
+): Promise<ResearchReplayResponse> {
+  return requestJson<ResearchReplayResponse>(
+    `/research/${encodeURIComponent(researchId)}/replay`
+  );
+}
