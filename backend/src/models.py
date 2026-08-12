@@ -220,6 +220,52 @@ class DecisionEvaluation:
 
 
 @dataclass(kw_only=True)
+class CandidateCriterionScore:
+    """Fitness of one candidate under one decision criterion."""
+
+    candidate_id: str
+    criterion_id: str
+
+    fitness_score: float
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class CandidateWeightedScore:
+    """Deterministic weighted score for one eligible candidate."""
+
+    candidate_id: str
+    weighted_score: float
+
+    criterion_scores: list[CandidateCriterionScore] = field(
+        default_factory=list
+    )
+
+    rank: Optional[int] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class DecisionComparison:
+    """Deterministic comparison result across eligible candidates."""
+
+    decision_id: str
+
+    status: str
+
+    candidate_scores: list[CandidateWeightedScore] = field(
+        default_factory=list
+    )
+
+    ranked_candidate_ids: list[str] = field(default_factory=list)
+    excluded_candidate_ids: list[str] = field(default_factory=list)
+    unresolved_candidate_ids: list[str] = field(default_factory=list)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
