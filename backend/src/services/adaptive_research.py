@@ -4,7 +4,9 @@ from models import (
     AdaptiveResearchIteration,
     AdaptiveResearchState,
     ResearchAnalysis,
+    ResearchBudget,
     ResearchGap,
+    ResearchUsage,
     TodoItem,
 )
 
@@ -127,6 +129,8 @@ def plan_adaptive_iteration(
     *,
     starting_task_id: int,
     max_tasks: int = DEFAULT_MAX_FOLLOWUP_TASKS,
+    research_budget: ResearchBudget | None = None,
+    research_usage: ResearchUsage | None = None,
 ) -> tuple[
     AdaptiveResearchIteration | None,
     list[TodoItem],
@@ -140,12 +144,42 @@ def plan_adaptive_iteration(
     if adaptive_state.status != "active":
         return None, []
 
+    effective_max_iterations = adaptive_state.max_iterations
+
+    if research_budget is not None:
+        effective_max_iterations = min(
+            effective_max_iterations,
+            research_budget.max_iterations,
+        )
+
     if (
         adaptive_state.iteration_count
-        >= adaptive_state.max_iterations
+        >= effective_max_iterations
     ):
         adaptive_state.status = "budget_exhausted"
         return None, []
+
+    if (
+        research_budget is not None
+        and research_usage is not None
+    ):
+        if research_usage.tasks >= research_budget.max_tasks:
+            adaptive_state.status = "budget_exhausted"
+            return None, []
+
+        remaining_tasks = (
+            research_budget.max_tasks
+            - research_usage.tasks
+        )
+
+        max_tasks = min(
+            max_tasks,
+            remaining_tasks,
+        )
+
+        if max_tasks <= 0:
+            adaptive_state.status = "budget_exhausted"
+            return None, []
 
     gaps = select_research_gaps(
         analysis,

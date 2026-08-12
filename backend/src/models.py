@@ -501,6 +501,55 @@ class DecisionReadiness:
 
 
 @dataclass(kw_only=True)
+class ResearchBudget:
+    """Bounded research budget for adaptive V3 iterations."""
+
+    max_iterations: int = field(default=3)
+    max_tasks: int = field(default=9)
+    max_searches: Optional[int] = field(default=None)
+    max_duration_seconds: Optional[float] = field(default=None)
+    max_tokens: Optional[int] = field(default=None)
+    max_cost: Optional[float] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class ResearchUsage:
+    """Observed resource usage for one adaptive decision workflow."""
+
+    iterations: int = field(default=0)
+    tasks: int = field(default=0)
+    searches: int = field(default=0)
+    duration_seconds: float = field(default=0.0)
+    tokens: int = field(default=0)
+    cost: float = field(default=0.0)
+
+
+@dataclass(kw_only=True)
+class ReadinessSnapshot:
+    """Readiness score captured after one research iteration."""
+
+    iteration_number: int
+    overall_score: float
+    status: str
+
+
+@dataclass(kw_only=True)
+class ResearchStoppingDecision:
+    """Explainable continue/stop decision for adaptive research."""
+
+    should_continue: bool
+    reason: str
+
+    readiness_score: float
+    readiness_status: str
+
+    readiness_improvement: Optional[float] = field(default=None)
+    actionable_gap_count: int = field(default=0)
+
+    blocking_budget_limits: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder

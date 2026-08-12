@@ -284,3 +284,101 @@ def test_no_actionable_gaps_stops_replanning():
     assert iteration is None
     assert tasks == []
     assert state.status == "no_actionable_gaps"
+
+
+def test_research_budget_limits_followup_task_count():
+    from models import (
+        ResearchBudget,
+        ResearchUsage,
+    )
+
+    analysis = ResearchAnalysis(
+        decision_id="dec_test",
+        research_gaps=[
+            gap(
+                "gap_1",
+                severity=1.0,
+                query="query one",
+            ),
+            gap(
+                "gap_2",
+                severity=0.9,
+                query="query two",
+            ),
+            gap(
+                "gap_3",
+                severity=0.8,
+                query="query three",
+            ),
+        ],
+    )
+
+    state = AdaptiveResearchState(
+        decision_id="dec_test",
+    )
+
+    budget = ResearchBudget(
+        max_iterations=3,
+        max_tasks=2,
+    )
+
+    usage = ResearchUsage(
+        iterations=0,
+        tasks=1,
+    )
+
+    iteration, tasks = plan_adaptive_iteration(
+        analysis,
+        state,
+        starting_task_id=10,
+        max_tasks=3,
+        research_budget=budget,
+        research_usage=usage,
+    )
+
+    assert iteration is not None
+    assert len(tasks) == 1
+
+
+def test_research_budget_blocks_when_task_budget_exhausted():
+    from models import (
+        ResearchBudget,
+        ResearchUsage,
+    )
+
+    analysis = ResearchAnalysis(
+        decision_id="dec_test",
+        research_gaps=[
+            gap(
+                "gap_1",
+                severity=1.0,
+                query="query one",
+            )
+        ],
+    )
+
+    state = AdaptiveResearchState(
+        decision_id="dec_test",
+    )
+
+    budget = ResearchBudget(
+        max_iterations=3,
+        max_tasks=1,
+    )
+
+    usage = ResearchUsage(
+        iterations=0,
+        tasks=1,
+    )
+
+    iteration, tasks = plan_adaptive_iteration(
+        analysis,
+        state,
+        starting_task_id=0,
+        research_budget=budget,
+        research_usage=usage,
+    )
+
+    assert iteration is None
+    assert tasks == []
+    assert state.status == "budget_exhausted"
