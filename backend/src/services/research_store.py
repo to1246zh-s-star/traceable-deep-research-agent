@@ -3,13 +3,210 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields, is_dataclass
 import sqlite3
 import uuid
 from pathlib import Path
 from threading import Lock
 from typing import Protocol
 
-from models import Claim, Evidence, ExecutionEvent, ExecutionTrace, SummaryState, TodoItem
+from models import (
+    AdaptiveResearchIteration,
+    AdaptiveResearchState,
+    AtomicClaim,
+    Candidate,
+    CandidateCriterionScore,
+    CandidateDecisionResult,
+    CandidateWeightedScore,
+    Claim,
+    Constraint,
+    CriterionCoverage,
+    DecisionCase,
+    DecisionComparison,
+    DecisionCriterion,
+    DecisionEvaluation,
+    DecisionReadiness,
+    Evidence,
+    EvidenceApplicability,
+    EvidenceAssessment,
+    EvidenceConflict,
+    EvidenceQuality,
+    EvidenceSignal,
+    ExecutionEvent,
+    ExecutionTrace,
+    ReadinessSnapshot,
+    Requirement,
+    ResearchAnalysis,
+    ResearchBudget,
+    ResearchGap,
+    ResearchStoppingDecision,
+    ResearchUsage,
+    SourceDiversity,
+    SourceQuality,
+    SummaryState,
+    TodoItem,
+)
+
+
+V3_MODEL_TYPES = {
+    cls.__name__: cls
+    for cls in (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        AtomicClaim,
+        Candidate,
+        CandidateCriterionScore,
+        CandidateDecisionResult,
+        CandidateWeightedScore,
+        Constraint,
+        CriterionCoverage,
+        DecisionCase,
+        DecisionComparison,
+        DecisionCriterion,
+        DecisionEvaluation,
+        DecisionReadiness,
+        EvidenceApplicability,
+        EvidenceAssessment,
+        EvidenceConflict,
+        EvidenceQuality,
+        EvidenceSignal,
+        ReadinessSnapshot,
+        Requirement,
+        ResearchAnalysis,
+        ResearchBudget,
+        ResearchGap,
+        ResearchStoppingDecision,
+        ResearchUsage,
+        SourceDiversity,
+        SourceQuality,
+    )
+}
+
+
+V3_STATE_FIELDS = (
+    "decision_case",
+    "decision_evaluation",
+    "decision_comparison",
+    "atomic_claims",
+    "evidence_assessments",
+    "evidence_signals",
+    "research_analysis",
+    "adaptive_research_state",
+    "decision_readiness",
+    "research_budget",
+    "research_usage",
+    "readiness_history",
+    "stopping_decision",
+)
+
+
+def _encode_v3_value(value):
+    """Recursively encode V3 dataclasses while preserving concrete types."""
+
+    if is_dataclass(value):
+        return {
+            "__type__": type(value).__name__,
+            "__data__": {
+                item.name: _encode_v3_value(
+                    getattr(value, item.name)
+                )
+                for item in fields(value)
+            },
+        }
+
+    if isinstance(value, list):
+        return [
+            _encode_v3_value(item)
+            for item in value
+        ]
+
+    if isinstance(value, tuple):
+        return {
+            "__tuple__": [
+                _encode_v3_value(item)
+                for item in value
+            ]
+        }
+
+    if isinstance(value, dict):
+        return {
+            str(key): _encode_v3_value(item)
+            for key, item in value.items()
+        }
+
+    return value
+
+
+def _decode_v3_value(value):
+    """Reconstruct V3 dataclasses encoded by _encode_v3_value()."""
+
+    if isinstance(value, list):
+        return [
+            _decode_v3_value(item)
+            for item in value
+        ]
+
+    if not isinstance(value, dict):
+        return value
+
+    if "__tuple__" in value:
+        return tuple(
+            _decode_v3_value(item)
+            for item in value["__tuple__"]
+        )
+
+    type_name = value.get("__type__")
+
+    if type_name is not None:
+        model_type = V3_MODEL_TYPES.get(type_name)
+
+        if model_type is None:
+            raise ValueError(
+                f"Unknown persisted V3 model type: {type_name}"
+            )
+
+        payload = {
+            key: _decode_v3_value(item)
+            for key, item in value["__data__"].items()
+        }
+
+        return model_type(**payload)
+
+    return {
+        key: _decode_v3_value(item)
+        for key, item in value.items()
+    }
+
+
+def _serialize_v3_state(state: SummaryState) -> str:
+    """Serialize all V3 decision-intelligence state into one JSON payload."""
+
+    payload = {
+        field_name: _encode_v3_value(
+            getattr(state, field_name)
+        )
+        for field_name in V3_STATE_FIELDS
+    }
+
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+    )
+
+
+def _deserialize_v3_state(raw: str | None) -> dict:
+    """Deserialize persisted V3 state with backward-compatible defaults."""
+
+    if not raw:
+        return {}
+
+    payload = json.loads(raw)
+
+    return {
+        key: _decode_v3_value(value)
+        for key, value in payload.items()
+        if key in V3_STATE_FIELDS
+    }
 
 
 class ResearchStore(Protocol):
@@ -158,6 +355,21 @@ class SQLiteResearchStore:
                 );
                 """
             )
+
+        with self._connect() as connection:
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(research_runs)"
+                ).fetchall()
+            }
+
+            if "v3_state_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE research_runs "
+                    "ADD COLUMN v3_state_json TEXT"
+                )
+                connection.commit()
 
     def save(self, state: SummaryState) -> str:
         """Persist one complete research state and return its research id."""
@@ -362,6 +574,21 @@ class SQLiteResearchStore:
                     ],
                 )
 
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE research_runs
+                    SET v3_state_json = ?
+                    WHERE research_id = ?
+                    """,
+                    (
+                        _serialize_v3_state(state),
+                        research_id,
+                    ),
+                )
+                connection.commit()
+
         return research_id
 
     def get(self, research_id: str) -> SummaryState | None:
@@ -378,7 +605,8 @@ class SQLiteResearchStore:
                         running_summary,
                         structured_report,
                         report_note_id,
-                        report_note_path
+                        report_note_path,
+                        v3_state_json
                     FROM research_runs
                     WHERE research_id = ?
                     """,
@@ -560,6 +788,10 @@ class SQLiteResearchStore:
             for row in event_rows
         ]
 
+        v3_state = _deserialize_v3_state(
+            research_row["v3_state_json"]
+        )
+
         return SummaryState(
             research_topic=research_row["research_topic"],
             search_query=research_row["search_query"],
@@ -574,6 +806,7 @@ class SQLiteResearchStore:
             structured_report=research_row["structured_report"],
             report_note_id=research_row["report_note_id"],
             report_note_path=research_row["report_note_path"],
+            **v3_state,
         )
 
     def list(self) -> list[tuple[str, SummaryState]]:

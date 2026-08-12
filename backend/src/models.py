@@ -612,6 +612,26 @@ class SummaryState:
     execution_event_history: list[ExecutionEvent] = field(default_factory=list)
     evidence_items: list[Evidence] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
+
+    # V3 Technical Decision Intelligence state
+    decision_case: Optional[DecisionCase] = field(default=None)
+    decision_evaluation: Optional[DecisionEvaluation] = field(default=None)
+    decision_comparison: Optional[DecisionComparison] = field(default=None)
+
+    atomic_claims: list[AtomicClaim] = field(default_factory=list)
+    evidence_assessments: list[EvidenceAssessment] = field(default_factory=list)
+    evidence_signals: list[EvidenceSignal] = field(default_factory=list)
+
+    research_analysis: Optional[ResearchAnalysis] = field(default=None)
+    adaptive_research_state: Optional[AdaptiveResearchState] = field(default=None)
+
+    decision_readiness: Optional[DecisionReadiness] = field(default=None)
+
+    research_budget: Optional[ResearchBudget] = field(default=None)
+    research_usage: Optional[ResearchUsage] = field(default=None)
+    readiness_history: list[ReadinessSnapshot] = field(default_factory=list)
+    stopping_decision: Optional[ResearchStoppingDecision] = field(default=None)
+
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
