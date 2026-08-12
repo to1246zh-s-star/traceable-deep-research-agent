@@ -116,6 +116,110 @@ class ExecutionEvent:
 
 
 @dataclass(kw_only=True)
+class Candidate:
+    """Technology candidate considered in a decision case."""
+
+    candidate_id: str = field(
+        default_factory=lambda: f"cand_{uuid.uuid4().hex[:12]}"
+    )
+
+    name: str
+    description: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class Requirement:
+    """User requirement relevant to a technical decision."""
+
+    requirement_id: str = field(
+        default_factory=lambda: f"req_{uuid.uuid4().hex[:12]}"
+    )
+
+    text: str
+
+
+@dataclass(kw_only=True)
+class Constraint:
+    """Hard constraint that a candidate must satisfy."""
+
+    constraint_id: str = field(
+        default_factory=lambda: f"con_{uuid.uuid4().hex[:12]}"
+    )
+
+    text: str
+    source: str = field(default="user")
+
+
+@dataclass(kw_only=True)
+class DecisionCriterion:
+    """Weighted criterion used to compare eligible candidates."""
+
+    criterion_id: str = field(
+        default_factory=lambda: f"crit_{uuid.uuid4().hex[:12]}"
+    )
+
+    name: str
+    weight: float
+    source: str = field(default="user")
+    description: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class DecisionCase:
+    """Structured representation of a technical decision problem."""
+
+    decision_id: str = field(
+        default_factory=lambda: f"dec_{uuid.uuid4().hex[:12]}"
+    )
+
+    question: str
+    context: Optional[str] = field(default=None)
+
+    candidates: list[Candidate] = field(default_factory=list)
+    requirements: list[Requirement] = field(default_factory=list)
+    constraints: list[Constraint] = field(default_factory=list)
+    criteria: list[DecisionCriterion] = field(default_factory=list)
+
+    status: str = field(default="draft")
+    recommendation: Optional[str] = field(default=None)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
+class CandidateDecisionResult:
+    """Deterministic hard-constraint evaluation for one candidate."""
+
+    candidate_id: str
+
+    status: str
+    violated_constraint_ids: list[str] = field(default_factory=list)
+    missing_constraint_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class DecisionEvaluation:
+    """Baseline deterministic evaluation of a DecisionCase."""
+
+    decision_id: str
+
+    status: str
+    candidate_results: list[CandidateDecisionResult] = field(
+        default_factory=list
+    )
+
+    eligible_candidate_ids: list[str] = field(default_factory=list)
+    disqualified_candidate_ids: list[str] = field(default_factory=list)
+    unresolved_candidate_ids: list[str] = field(default_factory=list)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
