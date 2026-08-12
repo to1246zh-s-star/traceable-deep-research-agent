@@ -550,6 +550,55 @@ class ResearchStoppingDecision:
 
 
 @dataclass(kw_only=True)
+class InternalDocument:
+    """Internal engineering knowledge available to V3 retrieval."""
+
+    document_id: str = field(
+        default_factory=lambda: f"doc_{uuid.uuid4().hex[:12]}"
+    )
+
+    title: str
+    content: str
+
+    source_type: str = field(default="internal_document")
+    source_path: Optional[str] = field(default=None)
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
+class InternalRetrievalHit:
+    """One ranked internal-knowledge retrieval result."""
+
+    document_id: str
+
+    score: float
+    matched_terms: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class HybridRetrievalResult:
+    """Unified result containing internal and external Evidence."""
+
+    query: str
+
+    evidence_items: list[Evidence] = field(default_factory=list)
+
+    internal_count: int = field(default=0)
+    external_count: int = field(default=0)
+
+    duplicate_count: int = field(default=0)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
