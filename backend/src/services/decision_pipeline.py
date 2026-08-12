@@ -12,6 +12,10 @@ from models import (
 )
 from services.decision_comparison import compare_candidates
 from services.decision_evaluator import evaluate_decision_case
+from services.decision_input_builder import (
+    build_evidence_assessments,
+    build_evidence_signals,
+)
 from services.decision_readiness import calculate_readiness
 from services.research_analysis import analyze_research
 from services.research_stopping import should_continue_research
@@ -37,8 +41,20 @@ def run_decision_pipeline(
     """
 
     criterion_scores = criterion_scores or []
-    evidence_signals = evidence_signals or []
-    evidence_assessments = evidence_assessments or []
+
+    if evidence_assessments is None:
+        evidence_assessments = build_evidence_assessments(
+            state,
+            decision,
+        )
+
+    state.evidence_assessments = evidence_assessments
+
+    if evidence_signals is None:
+        evidence_signals = build_evidence_signals(
+            state,
+            decision,
+        )
 
     budget = research_budget or ResearchBudget()
     usage = research_usage or ResearchUsage()
