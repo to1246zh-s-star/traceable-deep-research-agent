@@ -28,10 +28,17 @@ from models import (
     ExecutionEvent,
     ExecutionTrace,
     ResearchAnalysis,
+    CandidateCriterionScore,
+    DecisionCase,
+    EvidenceAssessment,
+    EvidenceSignal,
+    ResearchBudget,
+    ResearchUsage,
     SummaryState,
     SummaryStateOutput,
     TodoItem,
 )
+from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
 from services.adaptive_research import (
@@ -100,6 +107,31 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def execute_decision_pipeline(
+        self,
+        state: SummaryState,
+        decision: DecisionCase,
+        *,
+        constraint_results: dict[str, dict[str, bool]] | None = None,
+        criterion_scores: list[CandidateCriterionScore] | None = None,
+        evidence_signals: list[EvidenceSignal] | None = None,
+        evidence_assessments: list[EvidenceAssessment] | None = None,
+        research_budget: ResearchBudget | None = None,
+        research_usage: ResearchUsage | None = None,
+    ) -> SummaryState:
+        """Execute one V3 decision-intelligence pass on an existing state."""
+
+        return run_decision_pipeline(
+            state,
+            decision,
+            constraint_results=constraint_results,
+            criterion_scores=criterion_scores,
+            evidence_signals=evidence_signals,
+            evidence_assessments=evidence_assessments,
+            research_budget=research_budget,
+            research_usage=research_usage,
+        )
+
     @property
     def last_state(self) -> SummaryState | None:
         """Return the most recent research state, if available."""
