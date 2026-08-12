@@ -22,15 +22,24 @@ from prompts import (
     todo_planner_system_prompt,
 )
 from models import (
+    AdaptiveResearchIteration,
+    AdaptiveResearchState,
     Claim,
     ExecutionEvent,
     ExecutionTrace,
+    ResearchAnalysis,
     SummaryState,
     SummaryStateOutput,
     TodoItem,
 )
 from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
+from services.adaptive_research import (
+    plan_adaptive_iteration,
+    record_iteration_finished,
+    record_iteration_started,
+    select_research_gaps,
+)
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
@@ -427,6 +436,89 @@ class DeepResearchAgent:
         return self._get_execution_trace_service().summarize_events(
             state,
         )
+
+    def execute_adaptive_followups(
+        self,
+        state: SummaryState,
+        analysis: ResearchAnalysis,
+        adaptive_state: AdaptiveResearchState,
+        *,
+        max_tasks: int = 3,
+    ) -> AdaptiveResearchIteration | None:
+        """
+        Execute one adaptive follow-up research iteration.
+
+        ResearchGap planning is delegated to the Phase 12 adaptive
+        planner. Actual research reuses the existing TodoItem executor.
+        """
+
+        starting_task_id = max(
+            (
+                task.id
+                for task in state.todo_items
+            ),
+            default=0,
+        )
+
+        iteration, tasks = plan_adaptive_iteration(
+            analysis,
+            adaptive_state,
+            starting_task_id=starting_task_id,
+            max_tasks=max_tasks,
+        )
+
+        if iteration is None:
+            return None
+
+        selected_gap_ids = set(
+            iteration.gap_ids
+        )
+
+        selected_gaps = [
+            gap
+            for gap in analysis.research_gaps
+            if gap.gap_id in selected_gap_ids
+        ]
+
+        record_iteration_started(
+            adaptive_state,
+            iteration,
+            selected_gaps,
+        )
+
+        state.todo_items.extend(tasks)
+
+        success = True
+
+        try:
+            for task in tasks:
+                for _ in self._execute_task(
+                    state,
+                    task,
+                    emit_stream=False,
+                ):
+                    pass
+
+                if task.status == "failed":
+                    success = False
+
+        except Exception:
+            success = False
+            record_iteration_finished(
+                adaptive_state,
+                iteration,
+                success=False,
+            )
+            raise
+
+        record_iteration_finished(
+            adaptive_state,
+            iteration,
+            success=success,
+        )
+
+        return iteration
+
 
     def _finish_execution_trace(
         self,

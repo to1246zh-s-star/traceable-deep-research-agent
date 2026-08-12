@@ -438,6 +438,46 @@ class ResearchAnalysis:
 
 
 @dataclass(kw_only=True)
+class AdaptiveResearchIteration:
+    """One bounded adaptive follow-up research iteration."""
+
+    iteration_id: str = field(
+        default_factory=lambda: f"iter_{uuid.uuid4().hex[:12]}"
+    )
+
+    decision_id: str
+    iteration_number: int
+
+    gap_ids: list[str] = field(default_factory=list)
+    task_ids: list[int] = field(default_factory=list)
+
+    status: str = field(default="planned")
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
+class AdaptiveResearchState:
+    """Tracks adaptive replanning progress and stopping state."""
+
+    decision_id: str
+
+    iteration_count: int = field(default=0)
+    max_iterations: int = field(default=3)
+
+    executed_gap_ids: list[str] = field(default_factory=list)
+    executed_queries: list[str] = field(default_factory=list)
+
+    iterations: list[AdaptiveResearchIteration] = field(
+        default_factory=list
+    )
+
+    status: str = field(default="active")
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
