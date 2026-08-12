@@ -344,6 +344,15 @@ class DeepResearchAgent:
             for _ in self._execute_task(state, task, emit_stream=False):
                 pass
 
+        if state.decision_case is not None:
+            try:
+                self.execute_decision_intelligence(state)
+            except Exception:
+                logger.exception(
+                    "Decision intelligence failed; "
+                    "continuing with normal report generation"
+                )
+
         report = self.reporting.generate_report(state)
         self._drain_tool_events(state)
         state.structured_report = report
