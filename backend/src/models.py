@@ -351,6 +351,93 @@ class SourceDiversity:
 
 
 @dataclass(kw_only=True)
+class EvidenceSignal:
+    """Structured interpretation of Evidence for one candidate criterion."""
+
+    signal_id: str = field(
+        default_factory=lambda: f"sig_{uuid.uuid4().hex[:12]}"
+    )
+
+    evidence_id: str
+    candidate_id: str
+    criterion_id: str
+
+    direction: str
+    strength: float
+
+    source_confidence: float
+    applicability: float
+
+    atomic_claim_id: Optional[str] = field(default=None)
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class CriterionCoverage:
+    """Evidence coverage for one candidate × criterion pair."""
+
+    candidate_id: str
+    criterion_id: str
+
+    signal_count: int
+    effective_signal_count: float
+
+    coverage_score: float
+    confidence_score: float
+
+
+@dataclass(kw_only=True)
+class EvidenceConflict:
+    """Supporting and opposing evidence disagreement."""
+
+    candidate_id: str
+    criterion_id: str
+
+    supporting_signal_ids: list[str] = field(default_factory=list)
+    opposing_signal_ids: list[str] = field(default_factory=list)
+
+    conflict_score: float = field(default=0.0)
+    resolution_status: str = field(default="none")
+
+
+@dataclass(kw_only=True)
+class ResearchGap:
+    """Missing or weak research discovered during evaluation."""
+
+    gap_id: str = field(
+        default_factory=lambda: f"gap_{uuid.uuid4().hex[:12]}"
+    )
+
+    candidate_id: str
+    criterion_id: str
+
+    gap_type: str
+    severity: float
+
+    description: str
+    suggested_query: Optional[str] = field(default=None)
+
+    status: str = field(default="open")
+
+
+@dataclass(kw_only=True)
+class ResearchAnalysis:
+    """Phase 11 analysis across decision evidence signals."""
+
+    decision_id: str
+
+    coverages: list[CriterionCoverage] = field(default_factory=list)
+    conflicts: list[EvidenceConflict] = field(default_factory=list)
+    research_gaps: list[ResearchGap] = field(default_factory=list)
+
+    status: str = field(default="complete")
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
