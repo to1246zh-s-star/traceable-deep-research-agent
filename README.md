@@ -1,33 +1,37 @@
-Traceable Deep Research Agent
+# Traceable Deep Research Agent
 
-A traceable and evidence-grounded deep research system that plans research tasks, searches the web, tracks execution, captures structured evidence, links claims back to sources, persists complete research runs, and exposes the entire process through an interactive web interface.
+A **traceable and evidence-grounded deep research system** that plans research tasks, searches the web, tracks execution, captures structured evidence, links claims back to sources, persists complete research runs, and exposes the entire process through an interactive web interface.
 
-Current stable release: v2.0.0
+**Current stable release: `v2.0.0`**
 
-V2 focuses on making AI research traceable and grounded.
-V3 is evolving the system into an Evaluated + Adaptive Technical Decision Intelligence Agent for engineering technology selection and technical due diligence.
+> V2 focuses on making AI research **traceable and grounded**.
+> V3 is evolving the system into an **Evaluated + Adaptive Technical Decision Intelligence Agent** for engineering technology selection and technical due diligence.
 
-Why This Project?
+---
+
+## Why This Project?
 
 Most AI research assistants are good at producing answers.
 
 The harder problem is:
 
-Can we understand how the answer was produced and verify what evidence supports it?
+> **Can we understand how the answer was produced and verify what evidence supports it?**
 
 This project treats deep research as an inspectable engineering workflow rather than a single LLM response.
 
 Instead of:
 
+```text
 Question
    ↓
 LLM
    ↓
 Answer
-
+```
 
 V2 builds:
 
+```text
 Research Topic
       ↓
 Planner
@@ -43,10 +47,11 @@ Task Summaries
 Claims
       ↓
 Final Report
-
+```
 
 while preserving two parallel provenance layers:
 
+```text
 Execution Provenance
 
 Task
@@ -54,10 +59,11 @@ Task
 Trace
  ↓
 Execution Events
-
+```
 
 and:
 
+```text
 Content Provenance
 
 Claim
@@ -65,40 +71,47 @@ Claim
 Evidence
  ↓
 Source
-
+```
 
 This allows the system to answer two different questions:
 
-How did the Agent perform this research?
+> **How did the Agent perform this research?**
 
 and:
 
-What evidence supports this conclusion?
+> **What evidence supports this conclusion?**
 
-V2 — Traceable + Evidence-Grounded Research
+---
 
-v2.0.0 is the current stable release.
+# V2 — Traceable + Evidence-Grounded Research
+
+`v2.0.0` is the current stable release.
 
 V2 establishes the engineering foundation required for future adaptive research.
 
-Core Capabilities
-Reliable Research Planning
+## Core Capabilities
+
+### Reliable Research Planning
 
 The Planner converts a broad research topic into focused research tasks.
 
 Planner reliability includes:
 
-structured JSON output;
-schema validation;
-malformed-output repair;
-adaptive retry;
-bounded recovery behavior.
-Concurrent Research Execution
+* structured JSON output;
+* schema validation;
+* malformed-output repair;
+* adaptive retry;
+* bounded recovery behavior.
+
+---
+
+### Concurrent Research Execution
 
 Independent research tasks can execute concurrently.
 
 Each task performs:
 
+```text
 Task
  ↓
 Search Query
@@ -110,16 +123,17 @@ Source Processing
 Evidence Capture
  ↓
 Task Summarization
-
+```
 
 Execution concurrency is bounded to reduce provider rate-limit pressure.
 
-Execution Trace
+---
 
-Every task creates an ExecutionTrace.
+### Execution Trace
 
-Conceptually:
+Every task creates an `ExecutionTrace`.
 
+```text
 ExecutionTrace
 ├── trace_id
 ├── task_id
@@ -131,16 +145,19 @@ ExecutionTrace
 ├── retry_count
 ├── error_type
 └── error_message
-
+```
 
 This makes each research task independently inspectable.
 
-Execution Events
+---
 
-Task lifecycle activity is captured using structured ExecutionEvent objects.
+### Execution Events
+
+Task lifecycle activity is captured using structured `ExecutionEvent` objects.
 
 Current lifecycle events include:
 
+```text
 task_started
 search_started
 search_finished
@@ -148,39 +165,45 @@ summarization_started
 task_completed
 task_failed
 task_skipped
-
+```
 
 Each event records:
 
-event ID;
-trace ID;
-task ID;
-timestamp;
-execution stage;
-metadata.
-Trace Inspector
+* event ID;
+* trace ID;
+* task ID;
+* timestamp;
+* execution stage;
+* metadata.
 
-The frontend exposes an interactive Trace Inspector.
+---
+
+### Trace Inspector
+
+The frontend exposes an interactive **Trace Inspector**.
 
 Users can inspect:
 
-research ID;
-task status;
-trace ID;
-execution duration;
-retry count;
-current stage;
-search backend;
-source count;
-event timeline;
-execution failures.
+* research ID;
+* task status;
+* trace ID;
+* execution duration;
+* retry count;
+* current stage;
+* search backend;
+* source count;
+* event timeline;
+* execution failures.
 
-This forms the Execution Observability layer.
+This forms the **Execution Observability** layer.
 
-Structured Evidence
+---
 
-Search results are converted into structured Evidence objects.
+## Structured Evidence
 
+Search results are converted into structured `Evidence` objects.
+
+```text
 Evidence
 ├── evidence_id
 ├── task_id
@@ -193,10 +216,11 @@ Evidence
 ├── content
 ├── source_rank
 └── created_at
+```
 
+Evidence preserves the relationship:
 
-Evidence therefore preserves the relationship:
-
+```text
 Research
  ↓
 Task
@@ -206,23 +230,27 @@ Trace
 Evidence
  ↓
 Source
-
+```
 
 This is different from simply storing a list of URLs.
 
 The system retains information about:
 
-which task produced the evidence;
-which trace retrieved it;
-which query produced it;
-which search backend was used;
-source ranking;
-source snippet;
-retrieved page content.
-Claim–Evidence Grounding
+* which task produced the evidence;
+* which trace retrieved it;
+* which query produced it;
+* which search backend was used;
+* source ranking;
+* source snippet;
+* retrieved page content.
 
-Completed task summaries are represented as structured Claim objects.
+---
 
+## Claim–Evidence Grounding
+
+Completed task summaries are represented as structured `Claim` objects.
+
+```text
 Claim
 ├── claim_id
 ├── task_id
@@ -230,19 +258,21 @@ Claim
 ├── text
 ├── evidence_ids[]
 └── created_at
-
+```
 
 Current V2 grounding is task-level:
 
+```text
 Task Summary
      ↓
 Claim
      ↓
 Supporting Evidence[]
-
+```
 
 This creates an explicit provenance chain:
 
+```text
 Claim
  ↓
 Evidence
@@ -252,118 +282,148 @@ Source URL
 Trace
  ↓
 Task
-
+```
 
 Atomic claim-level grounding is planned for V3.
 
-Evidence Inspector
+---
 
-The frontend also exposes an Evidence Inspector.
+## Evidence Inspector
+
+The frontend also exposes an **Evidence Inspector**.
 
 For each Claim, users can inspect:
 
-Claim ID;
-Task ID;
-Trace ID;
-supporting evidence count;
-evidence ID;
-source rank;
-search backend;
-source title;
-source URL;
-snippet;
-original search query;
-retrieved content.
+* Claim ID;
+* Task ID;
+* Trace ID;
+* supporting evidence count;
+* evidence ID;
+* source rank;
+* search backend;
+* source title;
+* source URL;
+* snippet;
+* original search query;
+* retrieved content.
 
 Evidence items can also navigate back to the corresponding execution Trace.
 
-This forms the Evidence Grounding layer.
+This forms the **Evidence Grounding** layer.
 
-Persistent Research State
+---
+
+# Persistent Research State
 
 Research runs are persisted using SQLite.
 
 The persistence layer is abstracted through:
 
+```text
 ResearchStore
        ↓
 SQLiteResearchStore
-
+```
 
 Current persistent entities include:
 
+```text
 research_runs
 todo_items
 execution_traces
 execution_events
 evidence_items
 claims
-
+```
 
 This means completed research can be queried after the original execution process ends.
 
-Queryable Research APIs
+---
+
+# Queryable Research APIs
 
 V2 exposes structured APIs for inspecting stored research.
 
-Trace APIs
+## Trace APIs
+
+```http
 GET /research/{research_id}/traces
+```
 
+```http
 GET /research/{research_id}/traces/{trace_id}
+```
 
+```http
 GET /research/{research_id}/traces/{trace_id}/events
+```
 
-Evidence APIs
+## Evidence APIs
+
+```http
 GET /research/{research_id}/evidence
+```
 
+```http
 GET /research/{research_id}/evidence/{evidence_id}
+```
 
-Claim APIs
+## Claim APIs
+
+```http
 GET /research/{research_id}/claims
+```
 
+```http
 GET /research/{research_id}/claims/{claim_id}
-
+```
 
 The Claim detail endpoint resolves its supporting Evidence objects.
 
-Real-Time Research Streaming
+---
+
+# Real-Time Research Streaming
 
 Research execution is streamed to the frontend using Server-Sent Events over a POST fetch stream.
 
 The frontend streaming implementation handles:
 
-partial network chunks;
-buffered SSE blocks;
-CRLF normalization;
-multiple data: lines;
-multiple events per network chunk;
-trailing incomplete events;
-explicit error events;
-research persistence events.
+* partial network chunks;
+* buffered SSE blocks;
+* CRLF normalization;
+* multiple `data:` lines;
+* multiple events per network chunk;
+* trailing incomplete events;
+* explicit error events;
+* research persistence events.
 
 A research run remains stream-visible while still being persisted at completion.
 
-Source Quality Awareness
+---
+
+# Source Quality Awareness
 
 Retrieved sources are classified into deterministic source-quality tiers.
 
-Examples include:
-
-Source Type	Tier
-Official project websites	Tier 1
-Academic papers / technical reports	Tier 1
-Official organization repositories	Tier 1
-Authoritative technical sources	Tier 2
-Blogs, forums, aggregators and unverified sources	Tier 3
+| Source Type                                       |   Tier |
+| ------------------------------------------------- | -----: |
+| Official project websites                         | Tier 1 |
+| Academic papers / technical reports               | Tier 1 |
+| Official organization repositories                | Tier 1 |
+| Authoritative technical sources                   | Tier 2 |
+| Blogs, forums, aggregators and unverified sources | Tier 3 |
 
 Source quality information is passed into the summarization context and retained in the research output.
 
 V3 will extend this into explicit evidence-quality and source-diversity scoring.
 
-Safe Markdown Rendering
+---
+
+# Safe Markdown Rendering
 
 Generated summaries and reports are rendered through:
 
+```text
 LLM Markdown
     ↓
 marked
@@ -371,11 +431,15 @@ marked
 DOMPurify
     ↓
 Safe HTML
-
+```
 
 This allows readable Markdown output while reducing the risk of unsafe generated HTML.
 
-System Architecture
+---
+
+# System Architecture
+
+```text
                      User
                        │
                        ▼
@@ -410,51 +474,67 @@ System Architecture
                 │
                 ▼
             Final Report
-
+```
 
 Observability runs alongside execution:
 
+```text
 Task
  ↓
 ExecutionTrace
  ↓
 ExecutionEvent
-
+```
 
 Persistence stores:
 
+```text
 Research State
       ↓
 SQLiteResearchStore
       ↓
 Trace / Event / Evidence / Claim
+```
 
-Technology Stack
-Backend
-Python
-FastAPI
-Uvicorn
-Pydantic
-SQLite
-HelloAgents
-OpenAI-compatible model APIs
-Qwen
-Tavily Search
-pytest
-Frontend
-Vue 3
-TypeScript
-Vite
-Fetch Streaming
-Server-Sent Events
-marked
-DOMPurify
-Development
-Git
-Linux
-AutoDL
-tmux
-Project Structure
+---
+
+# Technology Stack
+
+## Backend
+
+* Python
+* FastAPI
+* Uvicorn
+* Pydantic
+* SQLite
+* HelloAgents
+* OpenAI-compatible model APIs
+* Qwen
+* Tavily Search
+* pytest
+
+## Frontend
+
+* Vue 3
+* TypeScript
+* Vite
+* Fetch Streaming
+* Server-Sent Events
+* marked
+* DOMPurify
+
+## Development
+
+* Git
+* Linux
+* AutoDL
+* tmux
+
+---
+
+# Project Structure
+
+```text
 traceable-deep-research-agent/
 ├── backend/
 │   ├── src/
@@ -479,40 +559,51 @@ traceable-deep-research-agent/
 │
 ├── README.md
 └── .gitignore
+```
 
-Getting Started
-Prerequisites
+---
+
+# Getting Started
+
+## Prerequisites
 
 Install:
 
-Python 3.10+
-Node.js
-npm
-Git
+* Python 3.10+
+* Node.js
+* npm
+* Git
 
 You will also need credentials for the configured LLM provider and search provider.
 
-Never commit API keys or .env files.
+Never commit API keys or `.env` files.
 
-Backend Setup
+---
+
+# Backend Setup
+
+```bash
 cd backend
-
+```
 
 Create a virtual environment:
 
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
+```
 
 Install dependencies:
 
+```bash
 pip install -r requirements.txt
-
+```
 
 Configure environment variables in:
 
+```text
 backend/.env
-
+```
 
 Example configuration depends on the selected model provider and search backend.
 
@@ -520,69 +611,90 @@ Do not commit this file.
 
 Start the API:
 
+```bash
 PYTHONPATH=src .venv/bin/python -m uvicorn main:app \
   --host 0.0.0.0 \
   --port 8000
-
+```
 
 Health check:
 
+```bash
 curl http://127.0.0.1:8000/healthz
-
+```
 
 Expected response:
 
+```json
 {
   "status": "ok"
 }
+```
 
-Frontend Setup
+---
+
+# Frontend Setup
+
+```bash
 cd frontend
 npm install
-
+```
 
 Start development mode:
 
+```bash
 npm run dev -- --host 0.0.0.0 --port 6006
-
+```
 
 Production build:
 
+```bash
 npm run build
+```
 
-Testing
+---
+
+# Testing
 
 Run the backend test suite:
 
+```bash
 cd backend
 
 PYTHONPATH=src .venv/bin/python -m pytest
-
+```
 
 Run the frontend production quality gate:
 
+```bash
 cd frontend
 
 npm run build
+```
 
-Example Research Workflow
+---
+
+# Example Research Workflow
 
 Example topic:
 
+```text
 What is Retrieval-Augmented Generation?
-
+```
 
 The Planner may create tasks such as:
 
+```text
 1. Definition and principles
 2. Core technical components
 3. Typical use cases
 4. Main implementation frameworks
 5. Performance limitations and challenges
-
+```
 
 Each task creates:
 
+```text
 Task
  ↓
 Trace
@@ -594,74 +706,86 @@ Evidence
 Summary
  ↓
 Claim
-
+```
 
 The final report combines completed task findings while preserving the underlying provenance information.
 
-Version History
-V1 — Functional Deep Research
+---
+
+# Version History
+
+## V1 — Functional Deep Research
 
 The first working release established:
 
-research planning;
-concurrent web research;
-task summarization;
-report generation;
-source classification;
-real-time streaming;
-frontend visualization.
-V2 — Traceable + Grounded Research
+* research planning;
+* concurrent web research;
+* task summarization;
+* report generation;
+* source classification;
+* real-time streaming;
+* frontend visualization.
+
+---
+
+## V2 — Traceable + Grounded Research
 
 Current stable release:
 
+```text
 v2.0.0
-
+```
 
 V2 adds:
 
-reliable structured Planner output;
-adaptive JSON repair;
-execution traces;
-execution events;
-trace query APIs;
-SQLite persistence;
-Trace Inspector;
-structured Evidence;
-structured Claims;
-Claim → Evidence relationships;
-Evidence APIs;
-Claim APIs;
-Evidence Inspector.
+* reliable structured Planner output;
+* adaptive JSON repair;
+* execution traces;
+* execution events;
+* trace query APIs;
+* SQLite persistence;
+* Trace Inspector;
+* structured Evidence;
+* structured Claims;
+* Claim → Evidence relationships;
+* Evidence APIs;
+* Claim APIs;
+* Evidence Inspector.
 
 The core V2 capabilities are:
 
-Traceable
+> **Traceable** — the system records how research was executed.
 
-The system records how research was executed.
+> **Grounded** — the system records what evidence supports research conclusions.
 
-Grounded
+---
 
-The system records what evidence supports research conclusions.
-
-V3 — Technical Decision Intelligence
+# V3 — Technical Decision Intelligence
 
 V3 is currently being designed and developed.
 
 The main product direction is:
 
-Evidence-grounded technical decision support for engineering technology selection and technical due diligence.
+> **Evidence-grounded technical decision support for engineering technology selection and technical due diligence.**
 
 Instead of only answering:
 
+```text
 What is Qdrant?
-
+```
 
 V3 targets questions such as:
 
+```text
 Which vector database should our production RAG system use
 given our workload, deployment constraints and engineering priorities?
+```
 
-V3 Target Workflow
+---
+
+## V3 Target Workflow
+
+```text
 Technical Decision
         ↓
 Requirement Understanding
@@ -693,37 +817,44 @@ Decision Readiness
                          │
                          ▼
                     Research Again
+```
 
-V3 Design Principles
-Users define what matters
+---
+
+## V3 Design Principles
+
+### Users define what matters
 
 The user controls:
 
-requirements;
-hard constraints;
-priorities;
-criterion weights.
+* requirements;
+* hard constraints;
+* priorities;
+* criterion weights.
 
 If the user does not specify decision criteria, the Agent may suggest reasonable defaults for confirmation.
 
-The Agent determines what the evidence says
+### The Agent determines what the evidence says
 
 LLMs are responsible for interpreting unstructured information, including:
 
-requirement extraction;
-evidence interpretation;
-claim extraction;
-evidence-signal extraction;
-research-gap interpretation.
-Deterministic logic performs the final aggregation
+* requirement extraction;
+* evidence interpretation;
+* claim extraction;
+* evidence-signal extraction;
+* research-gap interpretation.
+
+### Deterministic logic performs final aggregation
 
 V3 will not directly ask an LLM:
 
+```text
 Which candidate is best?
-
+```
 
 Instead:
 
+```text
 Evidence
  ↓
 Evidence Signal
@@ -735,59 +866,71 @@ Weighted Candidate Score
 Decision Readiness
  ↓
 Recommendation
-
+```
 
 This separates language understanding from decision logic.
 
-V3 Planned Capabilities
-Decision Modeling
+---
+
+# V3 Planned Capabilities
+
+## Decision Modeling
+
+```text
 DecisionCase
 ├── Candidates
 ├── Requirements
 ├── Hard Constraints
 └── Decision Criteria
+```
 
-Evidence Signals
+## Evidence Signals
 
 Evidence will be transformed into structured signals containing:
 
+```text
 Candidate
 Criterion
 Direction
 Strength
 Source Confidence
 Applicability
+```
 
-Explainable Candidate Evaluation
+## Explainable Candidate Evaluation
 
 Each Candidate × Criterion evaluation will expose:
 
+```text
 Fitness
 Confidence
 Coverage
 Conflict
+```
 
-Decision Readiness
+## Decision Readiness
 
 V3 will determine whether research is sufficient before issuing a final recommendation.
 
 Possible states include:
 
+```text
 READY
 TENTATIVE
 INSUFFICIENT_EVIDENCE
 CONFLICTED
 DISQUALIFIED
-
+```
 
 A reliable decision system should be able to say:
 
-There is not yet enough evidence to make a recommendation.
+> **There is not yet enough evidence to make a recommendation.**
 
-Adaptive Research
+## Adaptive Research
 
 When evidence is incomplete:
 
+```text
 Evaluation
  ↓
 Research Gap
@@ -797,86 +940,111 @@ Follow-up Query
 Additional Research
  ↓
 Re-evaluation
-
+```
 
 The Agent therefore evolves from:
 
+```text
 Plan once
 → Execute
 → Report
-
+```
 
 into:
 
+```text
 Plan
 → Research
 → Evaluate
 → Replan
 → Verify
 → Stop
+```
 
-V3 Roadmap
-Phase 7 — Decision Modeling & Evaluation Baseline
-DecisionCase;
-Candidate;
-Requirement;
-hard constraints;
-DecisionCriterion;
-baseline decision evaluation.
-Phase 8 — Criteria-Based Candidate Comparison
-Candidate × Criterion matrix;
-deterministic weighted scoring;
-comparison APIs and UI.
-Phase 9 — Evidence Quality & Source Diversity
-source-quality scoring;
-evidence quality;
-evidence applicability;
-source diversity.
-Phase 10 — Atomic Claim Grounding
-atomic claim extraction;
-fine-grained Claim → Evidence alignment;
-claim-level grounding.
-Phase 11 — Research Gap & Conflict Detection
-research coverage;
-weak-evidence detection;
-evidence conflicts;
-missing candidate information.
-Phase 12 — Adaptive Replanning & Verification
-targeted follow-up research;
-dynamically generated tasks;
-evidence verification loops.
-Phase 13 — Decision Scoring & Explainable Readiness
-candidate ranking;
-decision margin;
-decision readiness;
-blocking reasons;
-explainable recommendation.
-Phase 14 — Budget-Aware Adaptive Stopping
-task budget;
-search budget;
-latency budget;
-token / cost limits;
-diminishing-return stopping.
-Phase 15 — Internal Knowledge & Hybrid Retrieval
+---
+
+# V3 Roadmap
+
+### Phase 7 — Decision Modeling & Evaluation Baseline
+
+* `DecisionCase`
+* `Candidate`
+* `Requirement`
+* hard constraints
+* `DecisionCriterion`
+* baseline decision evaluation
+
+### Phase 8 — Criteria-Based Candidate Comparison
+
+* Candidate × Criterion matrix
+* deterministic weighted scoring
+* comparison APIs and UI
+
+### Phase 9 — Evidence Quality & Source Diversity
+
+* source-quality scoring
+* evidence quality
+* evidence applicability
+* source diversity
+
+### Phase 10 — Atomic Claim Grounding
+
+* atomic claim extraction
+* fine-grained Claim → Evidence alignment
+* claim-level grounding
+
+### Phase 11 — Research Gap & Conflict Detection
+
+* research coverage
+* weak-evidence detection
+* evidence conflicts
+* missing candidate information
+
+### Phase 12 — Adaptive Replanning & Verification
+
+* targeted follow-up research
+* dynamically generated tasks
+* evidence verification loops
+
+### Phase 13 — Decision Scoring & Explainable Readiness
+
+* candidate ranking
+* decision margin
+* decision readiness
+* blocking reasons
+* explainable recommendation
+
+### Phase 14 — Budget-Aware Adaptive Stopping
+
+* task budget
+* search budget
+* latency budget
+* token / cost limits
+* diminishing-return stopping
+
+### Phase 15 — Internal Knowledge & Hybrid Retrieval
 
 Combine:
 
+```text
 External Web Research
 +
 Internal Engineering Knowledge
-
+```
 
 Possible internal sources:
 
-architecture documents;
-incident reports;
-internal benchmarks;
-engineering standards;
-previous technical decisions.
-Phase 16 — Decision Dashboard & Research Replay
+* architecture documents;
+* incident reports;
+* internal benchmarks;
+* engineering standards;
+* previous technical decisions.
+
+### Phase 16 — Decision Dashboard & Research Replay
 
 Expose:
 
+```text
 Decision
 → Criteria
 → Candidates
@@ -886,11 +1054,13 @@ Decision
 → Research Gaps
 → Adaptive Iterations
 → Execution Trace
+```
 
-Project Evolution
+---
 
-The technical direction of the project is:
+# Project Evolution
 
+```text
 V1
 Functional
     ↓
@@ -899,10 +1069,11 @@ Traceable + Grounded
     ↓
 V3
 Evaluated + Adaptive
-
+```
 
 Or more broadly:
 
+```text
 Functional
     ↓
 Traceable
@@ -912,54 +1083,62 @@ Grounded
 Evaluated
     ↓
 Adaptive
-
+```
 
 The goal is not to combine as many Agent technologies as possible.
 
 The goal is to build an AI research system in which:
 
-important engineering decisions can be researched, inspected, evaluated, challenged, and traced back to supporting evidence.
+> important engineering decisions can be researched, inspected, evaluated, challenged, and traced back to supporting evidence.
 
-Security
+---
+
+# Security
 
 External content must always be treated as untrusted data.
 
 This includes:
 
-web pages;
-search results;
-uploaded documents;
-tool outputs;
-future internal knowledge sources;
-future MCP resources.
+* web pages;
+* search results;
+* uploaded documents;
+* tool outputs;
+* future internal knowledge sources;
+* future MCP resources.
 
 Retrieved content must never be allowed to override system instructions or expose secrets.
 
 Never commit:
 
+```text
 .env
 API keys
 runtime databases
 logs containing secrets
 node_modules
 frontend build artifacts
+```
 
-Contributing
+---
+
+# Contributing
 
 Before submitting changes:
 
-create a dedicated branch;
-keep each commit focused on one logical change;
-add or update tests;
-run the backend test suite;
-run the frontend production build;
-verify that no credentials or runtime files are included.
-Release Tags
+1. create a dedicated branch;
+2. keep each commit focused on one logical change;
+3. add or update tests;
+4. run the backend test suite;
+5. run the frontend production build;
+6. verify that no credentials or runtime files are included.
 
-Major milestones are preserved through Git tags.
+---
 
-Current milestones include:
+# Release Tags
 
+Current milestones:
+
+```text
 v1.0.0
 phase1-json-reliability
 phase2-executor-reliability
@@ -968,31 +1147,37 @@ phase4-persistence
 phase5-trace-inspector
 phase6-evidence-foundation
 v2.0.0
+```
 
-License
+---
+
+# License
 
 A project license has not yet been finalized.
 
-Future Positioning
+---
+
+# Future Positioning
 
 The target product direction is:
 
-A traceable, evidence-grounded, evaluated and adaptive Technical Decision Intelligence Agent for engineering teams.
+> **A traceable, evidence-grounded, evaluated and adaptive Technical Decision Intelligence Agent for engineering teams.**
 
 The long-term differentiator is not simply web search, RAG, tool calling, or multi-agent orchestration.
 
 It is the ability to answer:
 
-What should we choose?
+> **What should we choose?**
 
 while also showing:
 
-Why?
+> **Why?**
 
-Based on which evidence?
+> **Based on which evidence?**
 
-How reliable is that evidence?
+> **How reliable is that evidence?**
 
-What information is still missing?
+> **What information is still missing?**
 
-Is the decision ready to be made?
+> **Is the decision ready to be made?**
+
