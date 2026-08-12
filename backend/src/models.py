@@ -478,6 +478,29 @@ class AdaptiveResearchState:
 
 
 @dataclass(kw_only=True)
+class DecisionReadiness:
+    """Explainable heuristic readiness assessment for a technical decision."""
+
+    decision_id: str
+
+    overall_score: float
+    status: str
+
+    criterion_coverage: float
+    evidence_quality: float
+    applicability: float
+    agreement_score: float
+    decision_margin: float
+
+    blocking_reasons: list[str] = field(default_factory=list)
+    research_gap_ids: list[str] = field(default_factory=list)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
