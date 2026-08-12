@@ -38,6 +38,7 @@ from models import (
     SummaryStateOutput,
     TodoItem,
 )
+from services.decision_case_extractor import DecisionCaseExtractor
 from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
@@ -94,6 +95,15 @@ class DeepResearchAgent:
             system_prompt=report_writer_instructions.strip(),
         )
 
+        self.decision_case_agent = self._create_tool_aware_agent(
+            name="技术决策结构化专家",
+            system_prompt=(
+                "Extract structured technical decision information. "
+                "Follow the user prompt exactly and return only the "
+                "requested JSON."
+            ),
+        )
+
         self._summarizer_factory: Callable[[], ToolAwareSimpleAgent] = lambda: self._create_tool_aware_agent(  # noqa: E501
             name="任务总结专家",
             system_prompt=task_summarizer_instructions.strip(),
@@ -102,11 +112,25 @@ class DeepResearchAgent:
         self.planner = PlanningService(self.todo_agent, self.config)
         self.summarizer = SummarizationService(self._summarizer_factory, self.config)
         self.reporting = ReportingService(self.report_agent, self.config)
+        self.decision_case_extractor = DecisionCaseExtractor(
+            self.decision_case_agent,
+            self.config,
+        )
         self._last_search_notices: list[str] = []
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def extract_decision_case(
+        self,
+        research_topic: str,
+    ) -> DecisionCase | None:
+        """Extract a structured V3 DecisionCase from a research topic."""
+
+        return self.decision_case_extractor.extract(
+            research_topic,
+        )
+
     def execute_decision_pipeline(
         self,
         state: SummaryState,
