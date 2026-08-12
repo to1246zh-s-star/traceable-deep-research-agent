@@ -489,6 +489,15 @@ class DeepResearchAgent:
             for thread in threads:
                 thread.join()
 
+        if state.decision_case is not None:
+            try:
+                self.execute_decision_intelligence(state)
+            except Exception:
+                logger.exception(
+                    "Decision intelligence failed during streaming; "
+                    "continuing with normal report generation"
+                )
+
         report = self.reporting.generate_report(state)
         final_step = len(state.todo_items) + 1
         for event in self._drain_tool_events(state, step=final_step):
