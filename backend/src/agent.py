@@ -208,10 +208,38 @@ class DeepResearchAgent:
         self._tool_event_sink_enabled = sink is not None
         self._tool_tracker.set_event_sink(sink)
 
+    def _attach_decision_case(
+        self,
+        state: SummaryState,
+    ) -> DecisionCase | None:
+        """
+        Detect and attach a V3 DecisionCase without breaking research.
+
+        Decision extraction is optional enrichment. Any extractor failure
+        must degrade gracefully to the normal research workflow.
+        """
+
+        try:
+            decision = self.extract_decision_case(
+                state.research_topic,
+            )
+        except Exception:
+            logger.exception(
+                "DecisionCase extraction failed; "
+                "continuing as normal research"
+            )
+            return None
+
+        if decision is not None:
+            state.decision_case = decision
+
+        return decision
+
     def run(self, topic: str) -> SummaryStateOutput:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
         self._last_state = state
+        self._attach_decision_case(state)
         state.todo_items = self.planner.plan_todo_list(state)
         self._drain_tool_events(state)
 
@@ -239,6 +267,7 @@ class DeepResearchAgent:
         """Execute the workflow yielding incremental progress events."""
         state = SummaryState(research_topic=topic)
         self._last_state = state
+        self._attach_decision_case(state)
         logger.debug("Starting streaming research: topic=%s", topic)
         yield {"type": "status", "message": "初始化研究流程"}
 
