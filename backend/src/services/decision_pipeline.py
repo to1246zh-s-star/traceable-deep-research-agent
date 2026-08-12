@@ -14,6 +14,7 @@ from models import (
 from services.decision_comparison import compare_candidates
 from services.decision_evaluator import evaluate_decision_case
 from services.decision_input_builder import (
+    build_candidate_criterion_scores,
     build_evidence_assessments,
     build_evidence_signals,
 )
@@ -41,8 +42,6 @@ def run_decision_pipeline(
     their outputs on SummaryState.
     """
 
-    criterion_scores = criterion_scores or []
-
     if evidence_assessments is None:
         evidence_assessments = build_evidence_assessments(
             state,
@@ -55,6 +54,14 @@ def run_decision_pipeline(
         evidence_signals = build_evidence_signals(
             state,
             decision,
+        )
+
+    state.evidence_signals = evidence_signals
+
+    if criterion_scores is None:
+        criterion_scores = build_candidate_criterion_scores(
+            decision,
+            evidence_signals,
         )
 
     budget = research_budget or ResearchBudget()
