@@ -266,6 +266,68 @@ class DecisionComparison:
 
 
 @dataclass(kw_only=True)
+class SourceQuality:
+    """Quality assessment for the source behind one Evidence item."""
+
+    evidence_id: str
+
+    source_type: str
+    confidence: float
+
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class EvidenceQuality:
+    """Intrinsic quality assessment for one Evidence item."""
+
+    evidence_id: str
+
+    quality_score: float
+    completeness: float
+
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class EvidenceApplicability:
+    """Applicability of Evidence to the current DecisionCase."""
+
+    evidence_id: str
+    decision_id: str
+
+    applicability_score: float
+
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class EvidenceAssessment:
+    """Combined Phase 9 assessment for one Evidence item."""
+
+    evidence_id: str
+    decision_id: str
+
+    source_quality: SourceQuality
+    evidence_quality: EvidenceQuality
+    applicability: EvidenceApplicability
+
+    overall_score: float
+
+
+@dataclass(kw_only=True)
+class SourceDiversity:
+    """Diversity summary across a set of assessed Evidence items."""
+
+    evidence_count: int
+    source_type_count: int
+
+    diversity_score: float
+
+    source_types: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
