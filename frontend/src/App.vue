@@ -165,6 +165,463 @@
           </transition-group>
         </div>
 
+        <section
+          id="trace-inspector"
+          v-if="researchId"
+          class="trace-inspector"
+        >
+          <header class="trace-inspector-header">
+            <div>
+              <p class="trace-eyebrow">Execution Observability</p>
+              <h3>Trace Inspector</h3>
+              <p class="trace-research-id">
+                Research ID：{{ researchId }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="secondary-btn"
+              :disabled="traceLoading"
+              @click="researchId && loadResearchTraces(researchId)"
+            >
+              {{ traceLoading ? "加载中..." : "刷新 Trace" }}
+            </button>
+          </header>
+
+          <p v-if="traceError" class="trace-error">
+            {{ traceError }}
+          </p>
+
+          <div
+            v-if="executionTraces.length"
+            class="trace-layout"
+          >
+            <aside class="trace-list">
+              <button
+                v-for="trace in executionTraces"
+                :key="trace.trace_id"
+                type="button"
+                class="trace-list-item"
+                :class="{
+                  active: trace.trace_id === activeTraceId,
+                  'trace-failed': trace.status === 'failed',
+                  'trace-skipped': trace.status === 'skipped'
+                }"
+                @click="selectTrace(trace.trace_id)"
+              >
+                <div class="trace-list-title">
+                  <span>Task {{ trace.task_id }}</span>
+                  <span
+                    class="trace-status"
+                    :class="`trace-status-${trace.status}`"
+                  >
+                    {{ trace.status }}
+                  </span>
+                </div>
+
+                <code>{{ trace.trace_id }}</code>
+
+                <div class="trace-list-meta">
+                  <span>{{ formatDuration(trace.duration_ms) }}</span>
+                  <span>Retry {{ trace.retry_count }}</span>
+                </div>
+
+                <p
+                  v-if="trace.error_type || trace.error_message"
+                  class="trace-list-error"
+                >
+                  <strong>{{ trace.error_type || "ExecutionError" }}</strong>
+                  <span v-if="trace.error_message">
+                    {{ trace.error_message }}
+                  </span>
+                </p>
+              </button>
+            </aside>
+
+            <article class="trace-detail">
+              <div
+                v-if="traceLoading && !activeTraceDetail"
+                class="trace-empty"
+              >
+                正在加载执行轨迹…
+              </div>
+
+              <template v-else-if="activeTraceDetail">
+                <header class="trace-detail-header">
+                  <div>
+                    <h4>
+                      Task {{ activeTraceDetail.trace.task_id }}
+                    </h4>
+                    <code>
+                      {{ activeTraceDetail.trace.trace_id }}
+                    </code>
+                  </div>
+
+                  <span
+                    class="trace-status"
+                    :class="`trace-status-${activeTraceDetail.trace.status}`"
+                  >
+                    {{ activeTraceDetail.trace.status }}
+                  </span>
+                </header>
+
+                <div class="trace-metrics">
+                  <div>
+                    <span>阶段</span>
+                    <strong>
+                      {{
+                        activeTraceDetail.trace.current_stage ||
+                        "—"
+                      }}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>耗时</span>
+                    <strong>
+                      {{
+                        formatDuration(
+                          activeTraceDetail.trace.duration_ms
+                        )
+                      }}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>重试</span>
+                    <strong>
+                      {{ activeTraceDetail.trace.retry_count }}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>开始</span>
+                    <strong>
+                      {{
+                        formatTraceTimestamp(
+                          activeTraceDetail.trace.started_at
+                        )
+                      }}
+                    </strong>
+                  </div>
+                </div>
+
+                <div
+                  v-if="
+                    activeTraceDetail.trace.error_type ||
+                    activeTraceDetail.trace.error_message
+                  "
+                  class="trace-failure"
+                >
+                  <strong>
+                    {{
+                      activeTraceDetail.trace.error_type ||
+                      "ExecutionError"
+                    }}
+                  </strong>
+                  <p>
+                    {{
+                      activeTraceDetail.trace.error_message ||
+                      "未提供错误详情"
+                    }}
+                  </p>
+                </div>
+
+                <section class="event-section">
+                  <div class="event-section-header">
+                    <h4>Event Timeline</h4>
+                    <span>
+                      {{ activeTraceDetail.events.length }} events
+                    </span>
+                  </div>
+
+                  <ol
+                    v-if="activeTraceDetail.events.length"
+                    class="event-timeline"
+                  >
+                    <li
+                      v-for="event in activeTraceDetail.events"
+                      :key="event.event_id"
+                      class="event-item"
+                    >
+                      <span class="event-node"></span>
+
+                      <div class="event-card">
+                        <div class="event-card-header">
+                          <div>
+                            <strong>{{ event.event_type }}</strong>
+                            <span>{{ event.stage }}</span>
+                          </div>
+
+                          <time>
+                            {{
+                              formatTraceTimestamp(event.timestamp)
+                            }}
+                          </time>
+                        </div>
+
+                        <code>{{ event.event_id }}</code>
+
+                        <template
+                          v-if="Object.keys(event.metadata).length"
+                        >
+                          <div class="event-metadata-summary">
+                            <span v-if="event.metadata.backend">
+                              Backend: {{ event.metadata.backend }}
+                            </span>
+                            <span
+                              v-if="
+                                event.metadata.sources !== undefined
+                              "
+                            >
+                              Sources: {{ event.metadata.sources }}
+                            </span>
+                            <span v-if="event.metadata.reason">
+                              Reason: {{ event.metadata.reason }}
+                            </span>
+                            <span v-if="event.metadata.error_type">
+                              Error: {{ event.metadata.error_type }}
+                            </span>
+                          </div>
+
+                          <details class="event-metadata">
+                            <summary>完整 Metadata</summary>
+                            <pre>{{
+                              formatEventMetadata(event.metadata)
+                            }}</pre>
+                          </details>
+                        </template>
+                      </div>
+                    </li>
+                  </ol>
+
+                  <p v-else class="trace-empty">
+                    该 Trace 暂无执行事件。
+                  </p>
+                </section>
+              </template>
+
+              <p v-else class="trace-empty">
+                选择一个 Trace 查看执行详情。
+              </p>
+            </article>
+          </div>
+
+          <p
+            v-else-if="!traceLoading && !traceError"
+            class="trace-empty"
+          >
+            当前研究没有可展示的执行 Trace。
+          </p>
+        </section>
+
+        <section
+          id="evidence-inspector"
+          v-if="researchId"
+          class="evidence-inspector"
+        >
+          <header class="evidence-inspector-header">
+            <div>
+              <p class="trace-eyebrow">Evidence Grounding</p>
+              <h3>Evidence Inspector</h3>
+              <p class="evidence-description">
+                查看任务结论以及支持该结论的检索证据。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="secondary-btn"
+              :disabled="claimLoading"
+              @click="researchId && loadResearchClaims(researchId)"
+            >
+              {{ claimLoading ? "加载中..." : "刷新 Evidence" }}
+            </button>
+          </header>
+
+          <p v-if="claimError" class="trace-error">
+            {{ claimError }}
+          </p>
+
+          <div
+            v-if="researchClaims.length"
+            class="evidence-layout"
+          >
+            <aside class="claim-list">
+              <button
+                v-for="claim in researchClaims"
+                :key="claim.claim_id"
+                type="button"
+                class="claim-list-item"
+                :class="{
+                  active: claim.claim_id === activeClaimId
+                }"
+                @click="selectClaim(claim.claim_id)"
+              >
+                <div class="claim-list-title">
+                  <span>Task {{ claim.task_id }}</span>
+                  <span class="claim-evidence-count">
+                    {{ claim.evidence_ids.length }} evidence
+                  </span>
+                </div>
+
+                <p class="claim-preview">
+                  {{ claim.text }}
+                </p>
+
+                <code>{{ claim.claim_id }}</code>
+              </button>
+            </aside>
+
+            <article class="claim-detail">
+              <div
+                v-if="claimLoading && !activeClaimDetail"
+                class="trace-empty"
+              >
+                正在加载 Claim 与证据…
+              </div>
+
+              <template v-else-if="activeClaimDetail">
+                <header class="claim-detail-header">
+                  <div>
+                    <span class="claim-task-label">
+                      Task {{ activeClaimDetail.claim.task_id }}
+                    </span>
+                    <h4>Research Claim</h4>
+                  </div>
+
+                  <span class="claim-support-count">
+                    {{ activeClaimDetail.evidence.length }} supporting sources
+                  </span>
+                </header>
+
+                <div class="claim-text">
+                  {{ activeClaimDetail.claim.text }}
+                </div>
+
+                <div class="claim-provenance">
+                  <div>
+                    <span>Claim ID</span>
+                    <code>{{ activeClaimDetail.claim.claim_id }}</code>
+                  </div>
+
+                  <div>
+                    <span>Trace</span>
+                    <button
+                      type="button"
+                      class="claim-trace-link"
+                      @click="
+                        openEvidenceTrace(
+                          activeClaimDetail.claim.trace_id
+                        )
+                      "
+                    >
+                      {{ activeClaimDetail.claim.trace_id }}
+                    </button>
+                  </div>
+                </div>
+
+                <section class="supporting-evidence-section">
+                  <div class="event-section-header">
+                    <h4>Supporting Evidence</h4>
+                    <span>
+                      {{ activeClaimDetail.evidence.length }} sources
+                    </span>
+                  </div>
+
+                  <div
+                    v-if="activeClaimDetail.evidence.length"
+                    class="evidence-card-list"
+                  >
+                    <article
+                      v-for="evidence in activeClaimDetail.evidence"
+                      :key="evidence.evidence_id"
+                      class="evidence-card"
+                    >
+                      <header class="evidence-card-header">
+                        <div>
+                          <span class="evidence-rank">
+                            #{{ evidence.source_rank ?? "—" }}
+                          </span>
+                          <span class="evidence-backend">
+                            {{ evidence.backend }}
+                          </span>
+                        </div>
+
+                        <code>{{ evidence.evidence_id }}</code>
+                      </header>
+
+                      <h5>
+                        {{
+                          evidence.source_title ||
+                          "Untitled source"
+                        }}
+                      </h5>
+
+                      <a
+                        v-if="evidence.source_url"
+                        class="evidence-source-link"
+                        :href="evidence.source_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {{ evidence.source_url }}
+                      </a>
+
+                      <p
+                        v-if="evidence.snippet"
+                        class="evidence-snippet"
+                      >
+                        {{ evidence.snippet }}
+                      </p>
+
+                      <div class="evidence-provenance">
+                        <span>
+                          Query: {{ evidence.query }}
+                        </span>
+
+                        <button
+                          type="button"
+                          class="claim-trace-link"
+                          @click="
+                            openEvidenceTrace(evidence.trace_id)
+                          "
+                        >
+                          Trace: {{ evidence.trace_id }}
+                        </button>
+                      </div>
+
+                      <details
+                        v-if="evidence.content"
+                        class="evidence-content"
+                      >
+                        <summary>查看完整抓取内容</summary>
+                        <pre>{{ evidence.content }}</pre>
+                      </details>
+                    </article>
+                  </div>
+
+                  <p v-else class="trace-empty">
+                    当前 Claim 没有关联的 Supporting Evidence。
+                  </p>
+                </section>
+              </template>
+
+              <p v-else class="trace-empty">
+                选择一个 Claim 查看证据链。
+              </p>
+            </article>
+          </div>
+
+          <p
+            v-else-if="!claimLoading && !claimError"
+            class="trace-empty"
+          >
+            当前研究没有可展示的 Claim。
+          </p>
+        </section>
+
         <div class="tasks-section" v-if="todoTasks.length">
           <aside class="tasks-list">
             <h3>任务清单</h3>
@@ -185,6 +642,18 @@
                   </span>
                 </button>
                 <p class="task-intent">{{ task.intent }}</p>
+
+                <button
+                  v-if="getTraceForTask(task.id)"
+                  type="button"
+                  class="task-trace-link"
+                  @click.stop="openTraceForTask(task.id)"
+                >
+                  查看 Trace
+                  <span>
+                    {{ getTraceForTask(task.id)?.status }}
+                  </span>
+                </button>
               </li>
             </ul>
           </aside>
@@ -348,6 +817,16 @@
 </template>
 
 <script lang="ts" setup>
+import {
+  getResearchClaim,
+  getResearchTrace,
+  listResearchClaims,
+  listResearchTraces,
+  type ClaimDetailResponse,
+  type ClaimResponse,
+  type ExecutionTraceResponse,
+  type TraceDetailResponse
+} from "./services/api";
 import { computed, onBeforeUnmount, reactive, ref } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -659,11 +1138,238 @@ async function copyNotePath(path: string | null | undefined) {
   }
 }
 
+const researchId = ref<string | null>(null);
+const executionTraces = ref<ExecutionTraceResponse[]>([]);
+const activeTraceId = ref<string | null>(null);
+const activeTraceDetail = ref<TraceDetailResponse | null>(null);
+const traceLoading = ref(false);
+const traceError = ref("");
+
+const researchClaims = ref<ClaimResponse[]>([]);
+const activeClaimId = ref<string | null>(null);
+const activeClaimDetail = ref<ClaimDetailResponse | null>(null);
+const claimLoading = ref(false);
+const claimError = ref("");
+
+function formatDuration(durationMs: number | null): string {
+  if (durationMs === null || !Number.isFinite(durationMs)) {
+    return "—";
+  }
+
+  if (durationMs < 1000) {
+    return `${Math.round(durationMs)} ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(2)} s`;
+}
+
+function formatTraceTimestamp(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function getTraceForTask(
+  taskId: number
+): ExecutionTraceResponse | undefined {
+  return executionTraces.value.find(
+    (trace) => trace.task_id === taskId
+  );
+}
+
+async function openTraceForTask(taskId: number): Promise<void> {
+  const trace = getTraceForTask(taskId);
+
+  if (!trace) {
+    return;
+  }
+
+  await selectTrace(trace.trace_id);
+
+  requestAnimationFrame(() => {
+    document
+      .getElementById("trace-inspector")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  });
+}
+
+function formatEventMetadata(
+  metadata: Record<string, unknown>
+): string {
+  if (!Object.keys(metadata).length) {
+    return "{}";
+  }
+
+  try {
+    return JSON.stringify(metadata, null, 2);
+  } catch {
+    return String(metadata);
+  }
+}
+
+async function selectTrace(
+  traceId: string,
+  targetResearchId = researchId.value
+): Promise<void> {
+  if (!targetResearchId) {
+    return;
+  }
+
+  activeTraceId.value = traceId;
+  traceLoading.value = true;
+  traceError.value = "";
+
+  try {
+    activeTraceDetail.value = await getResearchTrace(
+      targetResearchId,
+      traceId
+    );
+  } catch (err) {
+    activeTraceDetail.value = null;
+    traceError.value =
+      err instanceof Error ? err.message : "Trace 加载失败";
+  } finally {
+    traceLoading.value = false;
+  }
+}
+
+async function loadResearchTraces(
+  targetResearchId: string
+): Promise<void> {
+  traceLoading.value = true;
+  traceError.value = "";
+
+  try {
+    const response = await listResearchTraces(targetResearchId);
+
+    executionTraces.value = response.traces;
+
+    if (!response.traces.length) {
+      activeTraceId.value = null;
+      activeTraceDetail.value = null;
+      return;
+    }
+
+    const firstTrace = response.traces[0];
+
+    await selectTrace(firstTrace.trace_id, targetResearchId);
+  } catch (err) {
+    executionTraces.value = [];
+    activeTraceId.value = null;
+    activeTraceDetail.value = null;
+    traceError.value =
+      err instanceof Error ? err.message : "Trace 列表加载失败";
+  } finally {
+    traceLoading.value = false;
+  }
+}
+
+async function selectClaim(
+  claimId: string,
+  targetResearchId = researchId.value
+): Promise<void> {
+  if (!targetResearchId) {
+    return;
+  }
+
+  activeClaimId.value = claimId;
+  claimLoading.value = true;
+  claimError.value = "";
+
+  try {
+    activeClaimDetail.value = await getResearchClaim(
+      targetResearchId,
+      claimId
+    );
+  } catch (err) {
+    activeClaimDetail.value = null;
+    claimError.value =
+      err instanceof Error ? err.message : "Claim 加载失败";
+  } finally {
+    claimLoading.value = false;
+  }
+}
+
+async function loadResearchClaims(
+  targetResearchId: string
+): Promise<void> {
+  claimLoading.value = true;
+  claimError.value = "";
+
+  try {
+    const response = await listResearchClaims(
+      targetResearchId
+    );
+
+    researchClaims.value = response.claims;
+
+    if (!response.claims.length) {
+      activeClaimId.value = null;
+      activeClaimDetail.value = null;
+      return;
+    }
+
+    const firstClaim = response.claims[0];
+
+    await selectClaim(
+      firstClaim.claim_id,
+      targetResearchId
+    );
+  } catch (err) {
+    researchClaims.value = [];
+    activeClaimId.value = null;
+    activeClaimDetail.value = null;
+    claimError.value =
+      err instanceof Error ? err.message : "Claim 列表加载失败";
+  } finally {
+    claimLoading.value = false;
+  }
+}
+
+async function openEvidenceTrace(
+  traceId: string
+): Promise<void> {
+  await selectTrace(traceId);
+
+  requestAnimationFrame(() => {
+    document
+      .getElementById("trace-inspector")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  });
+}
+
 function resetWorkflowState() {
   todoTasks.value = [];
   activeTaskId.value = null;
   reportMarkdown.value = "";
   progressLogs.value = [];
+  researchId.value = null;
+  executionTraces.value = [];
+  activeTraceId.value = null;
+  activeTraceDetail.value = null;
+  traceLoading.value = false;
+  traceError.value = "";
+
+  researchClaims.value = [];
+  activeClaimId.value = null;
+  activeClaimDetail.value = null;
+  claimLoading.value = false;
+  claimError.value = "";
+
   summaryHighlight.value = false;
   sourcesHighlight.value = false;
   reportHighlight.value = false;
@@ -943,6 +1649,31 @@ const handleSubmit = async () => {
           } else {
             progressLogs.value.push(`${agent} 调用了 ${tool}`);
           }
+          return;
+        }
+
+        if (event.type === "research_stored") {
+          const storedResearchId =
+            typeof event.research_id === "string" &&
+            event.research_id.trim()
+              ? event.research_id.trim()
+              : "";
+
+          if (!storedResearchId) {
+            traceError.value = "后端未返回有效 research_id";
+            return;
+          }
+
+          researchId.value = storedResearchId;
+          progressLogs.value.push(
+            `研究状态已持久化：${storedResearchId}`
+          );
+
+          void Promise.all([
+            loadResearchTraces(storedResearchId),
+            loadResearchClaims(storedResearchId)
+          ]);
+
           return;
         }
 
@@ -2329,6 +3060,712 @@ select:focus {
     height: 60vh;
   }
 }
+
+.trace-inspector {
+  padding: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.trace-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.trace-inspector-header h3 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+}
+
+.trace-eyebrow {
+  margin: 0;
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.trace-research-id {
+  margin: 0;
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.trace-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  border-radius: 12px;
+  background: rgba(254, 226, 226, 0.65);
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.trace-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(0, 2fr);
+  gap: 16px;
+}
+
+.trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.trace-list-item {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.trace-list-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.trace-list-item.active {
+  border-color: rgba(79, 70, 229, 0.55);
+  background: rgba(238, 242, 255, 0.9);
+}
+
+.trace-list-title,
+.trace-list-meta,
+.event-card-header,
+.trace-detail-header,
+.event-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trace-list-title {
+  margin-bottom: 7px;
+  font-weight: 650;
+}
+
+.trace-list-item code,
+.trace-detail code,
+.event-card code {
+  color: #64748b;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.trace-list-meta {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.trace-list-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  font-size: 11px;
+}
+
+.trace-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.trace-status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.trace-status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.trace-status-running,
+.trace-status-in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.trace-status-skipped {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.trace-detail {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.trace-detail-header {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.trace-detail-header h4 {
+  margin: 0 0 4px;
+}
+
+.trace-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.trace-metrics > div {
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.trace-metrics span {
+  display: block;
+  margin-bottom: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.trace-metrics strong {
+  display: block;
+  overflow: hidden;
+  color: #334155;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.trace-failure {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-left: 3px solid #ef4444;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.trace-failure p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.event-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+}
+
+.event-section-header {
+  margin-bottom: 14px;
+}
+
+.event-section-header h4 {
+  margin: 0;
+}
+
+.event-section-header span {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.event-timeline {
+  position: relative;
+  margin: 0;
+  padding: 0 0 0 22px;
+  list-style: none;
+}
+
+.event-timeline::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 6px;
+  width: 2px;
+  background: #e2e8f0;
+}
+
+.event-item {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.event-node {
+  position: absolute;
+  top: 14px;
+  left: -21px;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 0 2px #c7d2fe;
+}
+
+.event-card {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.event-card-header {
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.event-card-header strong {
+  display: block;
+  color: #1e293b;
+  font-size: 12px;
+}
+
+.event-card-header span {
+  color: #6366f1;
+  font-size: 10px;
+}
+
+.event-card-header time {
+  color: #94a3b8;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.event-metadata {
+  margin-top: 10px;
+}
+
+.event-metadata summary {
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.event-metadata pre {
+  max-height: 220px;
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.trace-empty {
+  margin: 12px 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .trace-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .trace-list {
+    max-height: 260px;
+  }
+
+  .trace-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+
+/* Phase 5.2 — Trace UX */
+
+.task-trace-link {
+  margin: 0 14px 12px;
+  padding: 6px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  background: rgba(238, 242, 255, 0.72);
+  cursor: pointer;
+  font-size: 11px;
+  color: #4338ca;
+}
+
+.task-trace-link:hover {
+  background: rgba(224, 231, 255, 0.95);
+}
+
+.task-trace-link span {
+  text-transform: uppercase;
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+.trace-list-item.trace-failed {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.trace-list-item.trace-skipped {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(255, 251, 235, 0.78);
+}
+
+.trace-list-error {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trace-list-error span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.event-metadata-summary {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.event-metadata-summary span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(238, 242, 255, 0.86);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  color: #4338ca;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+
+/* Phase 6 — Evidence Grounding */
+
+.evidence-inspector {
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+}
+
+.evidence-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.evidence-inspector-header h3 {
+  margin: 2px 0 4px;
+}
+
+.evidence-description {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.evidence-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.34fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.claim-list-item {
+  width: 100%;
+  padding: 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 0.88);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.claim-list-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.34);
+}
+
+.claim-list-item.active {
+  border-color: rgba(99, 102, 241, 0.52);
+  background: rgba(238, 242, 255, 0.95);
+}
+
+.claim-list-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.claim-evidence-count {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+  font-size: 10px;
+}
+
+.claim-preview {
+  display: -webkit-box;
+  margin: 0 0 8px;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.claim-list-item code {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.claim-detail {
+  min-width: 0;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  padding: 18px;
+  background: #ffffff;
+}
+
+.claim-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.claim-detail-header h4 {
+  margin: 4px 0 0;
+}
+
+.claim-task-label {
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.claim-support-count {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  font-size: 11px;
+}
+
+.claim-text {
+  margin-top: 16px;
+  padding: 15px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.claim-provenance {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.claim-provenance > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.claim-provenance span {
+  color: #94a3b8;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.claim-provenance code {
+  font-size: 11px;
+}
+
+.claim-trace-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.claim-trace-link:hover {
+  text-decoration: underline;
+}
+
+.supporting-evidence-section {
+  margin-top: 22px;
+}
+
+.evidence-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.evidence-card {
+  padding: 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.evidence-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.evidence-card-header > div {
+  display: flex;
+  gap: 6px;
+}
+
+.evidence-rank,
+.evidence-backend {
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.evidence-rank {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0369a1;
+}
+
+.evidence-backend {
+  background: rgba(99, 102, 241, 0.1);
+  color: #4338ca;
+}
+
+.evidence-card-header code {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.evidence-card h5 {
+  margin: 12px 0 6px;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+.evidence-source-link {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #2563eb;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.evidence-source-link:hover {
+  text-decoration: underline;
+}
+
+.evidence-snippet {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.evidence-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.evidence-content {
+  margin-top: 12px;
+}
+
+.evidence-content summary {
+  cursor: pointer;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.evidence-content pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 960px) {
+  .evidence-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-inspector-header {
+    flex-direction: column;
+  }
+}
+
 </style>
 
 <style scoped>

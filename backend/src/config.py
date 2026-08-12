@@ -2,7 +2,10 @@ import os
 from enum import Enum
 from typing import Any, Optional
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+load_dotenv()
 
 
 class SearchAPI(Enum):
@@ -45,6 +48,11 @@ class Configuration(BaseModel):
         default="./notes",
         title="Notes Workspace",
         description="Directory for NoteTool to persist task notes",
+    )
+    research_db_path: str = Field(
+        default="./data/research.db",
+        title="Research Database Path",
+        description="SQLite database path used to persist research runs",
     )
     fetch_full_page: bool = Field(
         default=True,

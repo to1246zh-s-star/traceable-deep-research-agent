@@ -80,7 +80,7 @@ export async function runResearchStream(
 
       onEvent(event);
 
-      return event.type === "error" || event.type === "done";
+      return event.type === "error";
     } catch (error) {
       console.error("解析流式事件失败：", error, trimmed);
       return false;
@@ -121,3 +121,174 @@ export async function runResearchStream(
     }
   }
 }
+
+export interface ExecutionTraceResponse {
+  trace_id: string;
+  task_id: number;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  current_stage: string | null;
+  retry_count: number;
+  error_type: string | null;
+  error_message: string | null;
+}
+
+export interface ExecutionEventResponse {
+  schema_version: number;
+  event_id: string;
+  trace_id: string;
+  timestamp: string;
+  task_id: number;
+  event_type: string;
+  stage: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface EvidenceResponse {
+  evidence_id: string;
+  task_id: number;
+  trace_id: string;
+  query: string;
+  backend: string;
+  source_title: string | null;
+  source_url: string | null;
+  snippet: string | null;
+  content: string | null;
+  source_rank: number | null;
+  created_at: string;
+}
+
+export interface EvidenceListResponse {
+  research_id: string;
+  evidence: EvidenceResponse[];
+}
+
+export interface EvidenceDetailResponse {
+  research_id: string;
+  evidence: EvidenceResponse;
+}
+
+export interface ClaimResponse {
+  claim_id: string;
+  task_id: number;
+  trace_id: string;
+  text: string;
+  evidence_ids: string[];
+  created_at: string;
+}
+
+export interface ClaimListResponse {
+  research_id: string;
+  claims: ClaimResponse[];
+}
+
+export interface ClaimDetailResponse {
+  research_id: string;
+  claim: ClaimResponse;
+  evidence: EvidenceResponse[];
+}
+
+export interface TraceListResponse {
+  research_id: string;
+  traces: ExecutionTraceResponse[];
+}
+
+export interface TraceDetailResponse {
+  research_id: string;
+  trace: ExecutionTraceResponse;
+  events: ExecutionEventResponse[];
+}
+
+export interface TraceEventsResponse {
+  research_id: string;
+  trace_id: string;
+  events: ExecutionEventResponse[];
+}
+
+async function requestJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${baseURL}${path}`, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || `请求失败，状态码：${response.status}`
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+export function listResearchTraces(
+  researchId: string
+): Promise<TraceListResponse> {
+  return requestJson<TraceListResponse>(
+    `/research/${encodeURIComponent(researchId)}/traces`
+  );
+}
+
+export function getResearchTrace(
+  researchId: string,
+  traceId: string
+): Promise<TraceDetailResponse> {
+  return requestJson<TraceDetailResponse>(
+    `/research/${encodeURIComponent(researchId)}/traces/${encodeURIComponent(
+      traceId
+    )}`
+  );
+}
+
+export function listResearchEvidence(
+  researchId: string
+): Promise<EvidenceListResponse> {
+  return requestJson<EvidenceListResponse>(
+    `/research/${encodeURIComponent(researchId)}/evidence`
+  );
+}
+
+export function getResearchEvidence(
+  researchId: string,
+  evidenceId: string
+): Promise<EvidenceDetailResponse> {
+  return requestJson<EvidenceDetailResponse>(
+    `/research/${encodeURIComponent(researchId)}/evidence/${encodeURIComponent(
+      evidenceId
+    )}`
+  );
+}
+
+export function listResearchClaims(
+  researchId: string
+): Promise<ClaimListResponse> {
+  return requestJson<ClaimListResponse>(
+    `/research/${encodeURIComponent(researchId)}/claims`
+  );
+}
+
+export function getResearchClaim(
+  researchId: string,
+  claimId: string
+): Promise<ClaimDetailResponse> {
+  return requestJson<ClaimDetailResponse>(
+    `/research/${encodeURIComponent(researchId)}/claims/${encodeURIComponent(
+      claimId
+    )}`
+  );
+}
+
+export function getResearchTraceEvents(
+  researchId: string,
+  traceId: string
+): Promise<TraceEventsResponse> {
+  return requestJson<TraceEventsResponse>(
+    `/research/${encodeURIComponent(researchId)}/traces/${encodeURIComponent(
+      traceId
+    )}/events`
+  );
+}
+

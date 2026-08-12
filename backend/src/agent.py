@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from queue import Empty, Queue
 from threading import Lock, Semaphore, Thread
 from typing import Any, Callable, Iterator
@@ -19,10 +21,19 @@ from prompts import (
     task_summarizer_instructions,
     todo_planner_system_prompt,
 )
-from models import SummaryState, SummaryStateOutput, TodoItem
+from models import (
+    Claim,
+    ExecutionEvent,
+    ExecutionTrace,
+    SummaryState,
+    SummaryStateOutput,
+    TodoItem,
+)
+from services.execution_errors import classify_execution_error
+from services.execution_trace import ExecutionTraceService
 from services.planner import PlanningService
 from services.reporter import ReportingService
-from services.search import dispatch_search, prepare_research_context
+from services.search import dispatch_search, extract_evidence, prepare_research_context
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
 
@@ -53,6 +64,10 @@ class DeepResearchAgent:
         )
         self._tool_event_sink_enabled = False
         self._state_lock = Lock()
+        self._last_state: SummaryState | None = None
+        self._execution_trace_service = ExecutionTraceService(
+            lock=self._state_lock,
+        )
 
         self.todo_agent = self._create_tool_aware_agent(
             name="研究规划专家",
@@ -76,6 +91,12 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    @property
+    def last_state(self) -> SummaryState | None:
+        """Return the most recent research state, if available."""
+
+        return getattr(self, "_last_state", None)
+
     def _init_llm(self) -> HelloAgentsLLM:
         """Instantiate HelloAgentsLLM following configuration preferences."""
         llm_kwargs: dict[str, Any] = {"temperature": 0.0}
@@ -125,6 +146,7 @@ class DeepResearchAgent:
     def run(self, topic: str) -> SummaryStateOutput:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
+        self._last_state = state
         state.todo_items = self.planner.plan_todo_list(state)
         self._drain_tool_events(state)
 
@@ -151,6 +173,7 @@ class DeepResearchAgent:
     def run_stream(self, topic: str) -> Iterator[dict[str, Any]]:
         """Execute the workflow yielding incremental progress events."""
         state = SummaryState(research_topic=topic)
+        self._last_state = state
         logger.debug("Starting streaming research: topic=%s", topic)
         yield {"type": "status", "message": "初始化研究流程"}
 
@@ -292,6 +315,140 @@ class DeepResearchAgent:
     # ------------------------------------------------------------------
     # Execution helpers
     # ------------------------------------------------------------------
+    def _emit_execution_event(
+        self,
+        state: SummaryState,
+        *,
+        trace_id: str | None = None,
+        task_id: int,
+        event_type: str,
+        stage: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a runtime execution event."""
+
+        event = ExecutionEvent(
+            trace_id=trace_id or "trace_unknown",
+            task_id=task_id,
+            event_type=event_type,
+            stage=stage,
+            metadata=metadata or {},
+        )
+
+        with self._state_lock:
+            state.execution_events.append(event)
+            state.execution_event_history.append(event)
+
+    def _drain_execution_events(
+        self,
+        state: SummaryState,
+    ) -> list[dict[str, Any]]:
+        """Convert stored execution events into stream events."""
+
+        with self._state_lock:
+            events = list(state.execution_events)
+            state.execution_events.clear()
+
+        return [
+            {
+                "type": "execution_event",
+                "schema_version": event.schema_version,
+                "event_id": event.event_id,
+                "trace_id": event.trace_id,
+                "timestamp": event.timestamp,
+                "task_id": event.task_id,
+                "event_type": event.event_type,
+                "stage": event.stage,
+                "metadata": event.metadata,
+            }
+            for event in events
+        ]
+
+    def get_execution_events(
+        self,
+        state: SummaryState,
+        *,
+        trace_id: str | None = None,
+        task_id: int | None = None,
+        event_type: str | None = None,
+    ) -> list[ExecutionEvent]:
+        """Query execution event history with optional filters."""
+
+        return self._get_execution_trace_service().get_events(
+            state,
+            trace_id=trace_id,
+            task_id=task_id,
+            event_type=event_type,
+        )
+
+    def _get_execution_trace_service(self) -> ExecutionTraceService:
+        """Return the trace service, creating it for lightweight test agents."""
+
+        service = getattr(self, "_execution_trace_service", None)
+
+        if service is None:
+            service = ExecutionTraceService(
+                lock=self._state_lock,
+            )
+            self._execution_trace_service = service
+
+        return service
+
+    def get_execution_trace(
+        self,
+        state: SummaryState,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Retrieve one execution trace together with related events."""
+
+        return self._get_execution_trace_service().get_trace(
+            state,
+            trace_id,
+        )
+
+    def serialize_execution_trace(
+        self,
+        state: SummaryState,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Serialize execution trace and events into JSON-compatible data."""
+
+        return self._get_execution_trace_service().serialize_trace(
+            state,
+            trace_id,
+        )
+
+    def get_execution_event_summary(
+        self,
+        state: SummaryState,
+    ) -> dict[str, Any]:
+        """Summarize execution event history."""
+
+        return self._get_execution_trace_service().summarize_events(
+            state,
+        )
+
+    def _finish_execution_trace(
+        self,
+        trace: ExecutionTrace,
+        *,
+        status: str,
+        started_counter: float,
+        error: Exception | None = None,
+    ) -> None:
+        """Finalize an execution trace with timing and optional error details."""
+
+        trace.status = status
+        trace.finished_at = datetime.now(timezone.utc).isoformat()
+        trace.duration_ms = (perf_counter() - started_counter) * 1000
+
+        if error is None:
+            trace.error_type = None
+            trace.error_message = None
+        else:
+            trace.error_type = classify_execution_error(error)
+            trace.error_message = str(error)
+
     def _execute_task(
         self,
         state: SummaryState,
@@ -303,15 +460,84 @@ class DeepResearchAgent:
         """Run search + summarization for a single task."""
         task.status = "in_progress"
 
-        search_result, notices, answer_text, backend = dispatch_search(
-            task.query,
-            self.config,
-            state.research_loop_count,
+        started_at = datetime.now(timezone.utc)
+        started_counter = perf_counter()
+        trace = ExecutionTrace(
+            task_id=task.id,
+            status="running",
+            started_at=started_at.isoformat(),
+            current_stage="search",
         )
+
+        with self._state_lock:
+            state.execution_traces.append(trace)
+
+        self._emit_execution_event(
+            state,
+            trace_id=trace.trace_id,
+            task_id=task.id,
+            event_type="task_started",
+            stage="executor",
+        )
+
+        try:
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="search_started",
+                stage="search",
+            )
+
+            search_result, notices, answer_text, backend = dispatch_search(
+                task.query,
+                self.config,
+                state.research_loop_count,
+            )
+
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="search_finished",
+                stage="search",
+                metadata={
+                    "backend": backend,
+                    "sources": len(
+                        search_result.get("results", [])
+                    )
+                    if search_result
+                    else 0,
+                },
+            )
+        except Exception as exc:
+            task.status = "failed"
+
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="task_failed",
+                stage="search",
+                metadata={
+                    "error_type": classify_execution_error(exc),
+                },
+            )
+
+            self._finish_execution_trace(
+                trace,
+                status="failed",
+                started_counter=started_counter,
+                error=exc,
+            )
+            raise
         self._last_search_notices = notices
         task.notices = notices
 
         if emit_stream:
+            for event in self._drain_execution_events(state):
+                yield event
+
             for event in self._drain_tool_events(state, step=step):
                 yield event
         else:
@@ -329,6 +555,24 @@ class DeepResearchAgent:
 
         if not search_result or not search_result.get("results"):
             task.status = "skipped"
+
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="task_skipped",
+                stage="search",
+                metadata={
+                    "reason": "empty_search_result",
+                },
+            )
+
+            self._finish_execution_trace(
+                trace,
+                status="skipped",
+                started_counter=started_counter,
+            )
+
             if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
                     yield event
@@ -349,6 +593,17 @@ class DeepResearchAgent:
             if not emit_stream:
                 self._drain_tool_events(state)
 
+        evidence_items = extract_evidence(
+            search_result,
+            task_id=task.id,
+            trace_id=trace.trace_id,
+            query=task.query,
+            backend=backend,
+        )
+
+        with self._state_lock:
+            state.evidence_items.extend(evidence_items)
+
         sources_summary, context = prepare_research_context(
             search_result,
             answer_text,
@@ -363,75 +618,140 @@ class DeepResearchAgent:
             state.research_loop_count += 1
 
         summary_text: str | None = None
+        trace.current_stage = "summarization"
 
-        if emit_stream:
-            for event in self._drain_tool_events(state, step=step):
-                yield event
-            yield {
-                "type": "sources",
-                "task_id": task.id,
-                "latest_sources": sources_summary,
-                "raw_context": context,
-                "step": step,
-                "backend": backend,
-                "note_id": task.note_id,
-                "note_path": task.note_path,
-            }
+        self._emit_execution_event(
+            state,
+            trace_id=trace.trace_id,
+            task_id=task.id,
+            event_type="summarization_started",
+            stage="summarization",
+        )
 
-            summary_stream, summary_getter = self.summarizer.stream_task_summary(state, task, context)
-            try:
+        try:
+            if emit_stream:
                 for event in self._drain_tool_events(state, step=step):
                     yield event
-                chunk_buffer = ""
-                chunk_size = 160
+                yield {
+                    "type": "sources",
+                    "task_id": task.id,
+                    "latest_sources": sources_summary,
+                    "raw_context": context,
+                    "step": step,
+                    "backend": backend,
+                    "note_id": task.note_id,
+                    "note_path": task.note_path,
+                }
 
-                for chunk in summary_stream:
-                    if chunk:
-                        chunk_buffer += chunk
+                summary_stream, summary_getter = self.summarizer.stream_task_summary(state, task, context)
+                try:
+                    for event in self._drain_tool_events(state, step=step):
+                        yield event
+                    chunk_buffer = ""
+                    chunk_size = 160
 
-                    while len(chunk_buffer) >= chunk_size:
-                        content = chunk_buffer[:chunk_size]
-                        chunk_buffer = chunk_buffer[chunk_size:]
+                    for chunk in summary_stream:
+                        if chunk:
+                            chunk_buffer += chunk
 
+                        while len(chunk_buffer) >= chunk_size:
+                            content = chunk_buffer[:chunk_size]
+                            chunk_buffer = chunk_buffer[chunk_size:]
+
+                            yield {
+                                "type": "task_summary_chunk",
+                                "task_id": task.id,
+                                "content": content,
+                                "note_id": task.note_id,
+                                "step": step,
+                            }
+
+                        for event in self._drain_tool_events(state, step=step):
+                            yield event
+
+                    # 模型流结束后发送不足 chunk_size 的剩余内容
+                    if chunk_buffer:
                         yield {
                             "type": "task_summary_chunk",
                             "task_id": task.id,
-                            "content": content,
+                            "content": chunk_buffer,
                             "note_id": task.note_id,
                             "step": step,
                         }
+                finally:
+                    summary_text = summary_getter()
+            else:
+                summary_text = self.summarizer.summarize_task(state, task, context)
+                self._drain_tool_events(state)
 
-                    for event in self._drain_tool_events(state, step=step):
-                        yield event
+            if not self.summarizer.is_valid_summary(summary_text):
+                logger.warning(
+                    "Invalid task summary detected; retrying once: task_id=%s",
+                    task.id,
+                )
+                summary_text = self.summarizer.summarize_task(state, task, context)
 
-                # 模型流结束后发送不足 chunk_size 的剩余内容
-                if chunk_buffer:
-                    yield {
-                        "type": "task_summary_chunk",
-                        "task_id": task.id,
-                        "content": chunk_buffer,
-                        "note_id": task.note_id,
-                        "step": step,
-                    }
-            finally:
-                summary_text = summary_getter()
-        else:
-            summary_text = self.summarizer.summarize_task(state, task, context)
-            self._drain_tool_events(state)
+            if self.summarizer.is_valid_summary(summary_text):
+                task.summary = summary_text.strip()
+            else:
+                task.summary = "暂无可用信息：模型未返回有效的任务总结。"
+        except Exception as exc:
+            task.status = "failed"
 
-        if not self.summarizer.is_valid_summary(summary_text):
-            logger.warning(
-                "Invalid task summary detected; retrying once: task_id=%s",
-                task.id,
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="task_failed",
+                stage="summarization",
+                metadata={
+                    "error_type": classify_execution_error(exc),
+                },
             )
-            summary_text = self.summarizer.summarize_task(state, task, context)
 
-        if self.summarizer.is_valid_summary(summary_text):
-            task.summary = summary_text.strip()
-        else:
-            task.summary = "暂无可用信息：模型未返回有效的任务总结。"
+            self._finish_execution_trace(
+                trace,
+                status="failed",
+                started_counter=started_counter,
+                error=exc,
+            )
+            raise
+
+
+        evidence_ids = [
+            evidence.evidence_id
+            for evidence in state.evidence_items
+            if evidence.task_id == task.id
+            and evidence.trace_id == trace.trace_id
+        ]
+
+        claim = Claim(
+            task_id=task.id,
+            trace_id=trace.trace_id,
+            text=task.summary or "",
+            evidence_ids=evidence_ids,
+        )
+
+        with self._state_lock:
+            state.claims.append(claim)
 
         task.status = "completed"
+        self._finish_execution_trace(
+            trace,
+            status="completed",
+            started_counter=started_counter,
+        )
+
+        self._emit_execution_event(
+            state,
+            trace_id=trace.trace_id,
+            task_id=task.id,
+            event_type="task_completed",
+            stage="executor",
+            metadata={
+                "status": task.status,
+            },
+        )
 
         if emit_stream:
             for event in self._drain_tool_events(state, step=step):

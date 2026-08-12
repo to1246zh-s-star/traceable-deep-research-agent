@@ -1,8 +1,10 @@
 """State models used by the deep research workflow."""
 
 import operator
+import uuid
 from dataclasses import dataclass, field
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Any, List, Optional
 
 from typing_extensions import Annotated
 
@@ -25,6 +27,95 @@ class TodoItem:
 
 
 @dataclass(kw_only=True)
+class Evidence:
+    """Structured evidence captured from one retrieved source."""
+
+    evidence_id: str = field(
+        default_factory=lambda: f"evi_{uuid.uuid4().hex[:12]}"
+    )
+
+    task_id: int
+    trace_id: str
+
+    query: str
+    backend: str
+
+    source_title: Optional[str] = field(default=None)
+    source_url: Optional[str] = field(default=None)
+    snippet: Optional[str] = field(default=None)
+    content: Optional[str] = field(default=None)
+
+    source_rank: Optional[int] = field(default=None)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
+class Claim:
+    """Research claim supported by retrieved evidence."""
+
+    claim_id: str = field(
+        default_factory=lambda: f"clm_{uuid.uuid4().hex[:12]}"
+    )
+
+    task_id: int
+    trace_id: str
+
+    text: str
+    evidence_ids: list[str] = field(default_factory=list)
+
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+@dataclass(kw_only=True)
+class ExecutionTrace:
+    """Runtime trace for a single TODO task execution."""
+
+    trace_id: str = field(
+        default_factory=lambda: f"trace_{uuid.uuid4().hex[:12]}"
+    )
+
+    task_id: int
+    status: str = field(default="pending")
+    started_at: Optional[str] = field(default=None)
+    finished_at: Optional[str] = field(default=None)
+    duration_ms: Optional[float] = field(default=None)
+    current_stage: Optional[str] = field(default=None)
+    retry_count: int = field(default=0)
+    error_type: Optional[str] = field(default=None)
+    error_message: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
+class ExecutionEvent:
+    """Single runtime event emitted during task execution."""
+
+    trace_id: str = field(
+        default="trace_unknown"
+    )
+
+    task_id: int
+    event_type: str
+    stage: str
+
+    schema_version: int = field(default=1)
+
+    event_id: str = field(
+        default_factory=lambda: f"evt_{uuid.uuid4().hex[:12]}"
+    )
+
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
@@ -33,6 +124,11 @@ class SummaryState:
     research_loop_count: int = field(default=0)  # Research loop count
     running_summary: str = field(default=None)  # Legacy summary field
     todo_items: Annotated[list, operator.add] = field(default_factory=list)
+    execution_traces: list[ExecutionTrace] = field(default_factory=list)
+    execution_events: list[ExecutionEvent] = field(default_factory=list)
+    execution_event_history: list[ExecutionEvent] = field(default_factory=list)
+    evidence_items: list[Evidence] = field(default_factory=list)
+    claims: list[Claim] = field(default_factory=list)
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
