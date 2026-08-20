@@ -19,6 +19,10 @@ from agent import DeepResearchAgent
 from config import Configuration, SearchAPI
 from services.execution_trace import ExecutionTraceService
 from services.research_store import SQLiteResearchStore
+from services.llm_preflight import (
+    LLMPreflightGuard,
+    LLMPreflightResult,
+)
 
 # 添加控制台日志处理程序
 logger.add(
@@ -496,6 +500,44 @@ def _build_config(payload: ResearchRequest) -> Configuration:
     return Configuration.from_env(overrides=overrides)
 
 
+def _probe_llm(
+    agent: DeepResearchAgent,
+) -> object:
+    """
+    Execute one minimal LLM availability probe.
+
+    This intentionally bypasses the research workflow. The result content
+    is irrelevant; successful invocation alone establishes short-lived
+    provider availability.
+    """
+
+    messages = [
+        {
+            "role": "user",
+            "content": "Reply with OK.",
+        }
+    ]
+
+    return agent.llm.invoke(
+        messages,
+        max_tokens=4,
+    )
+
+
+def _llm_unavailable_detail(
+    result: LLMPreflightResult,
+    *,
+    provider: str,
+) -> dict[str, str]:
+    """Build a safe public API error payload."""
+
+    return {
+        "code": result.code,
+        "reason": result.reason,
+        "provider": provider or "unknown",
+    }
+
+
 def create_app() -> FastAPI:
     config = Configuration.from_env()
 
@@ -537,6 +579,11 @@ def create_app() -> FastAPI:
         lock=Lock(),
     )
 
+    app.state.llm_preflight_guard = LLMPreflightGuard(
+        success_ttl_seconds=60.0,
+        failure_ttl_seconds=15.0,
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -544,6 +591,40 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    def ensure_llm_available(
+        agent: DeepResearchAgent,
+        config: Configuration,
+    ) -> None:
+        """
+        Fail before starting research when the configured LLM is unavailable.
+
+        The guard caches recent results so healthy requests do not add an
+        extra provider call for every research run.
+        """
+
+        result = app.state.llm_preflight_guard.check(
+            lambda: _probe_llm(agent)
+        )
+
+        if result.available:
+            return
+
+        logger.warning(
+            "LLM preflight failed: provider=%s code=%s reason=%s",
+            config.llm_provider,
+            result.code,
+            result.reason,
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=_llm_unavailable_detail(
+                result,
+                provider=config.llm_provider,
+            ),
+        )
+
 
     @app.get("/healthz")
     def health_check() -> Dict[str, str]:
@@ -838,6 +919,12 @@ def create_app() -> FastAPI:
         try:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)
+
+            ensure_llm_available(
+                agent,
+                config,
+            )
+
             result = agent.run(payload.topic)
 
             state = agent.last_state
@@ -845,10 +932,16 @@ def create_app() -> FastAPI:
                 raise RuntimeError("Research state was not captured")
 
             research_id = app.state.research_store.save(state)
+        except HTTPException:
+            raise
         except ValueError as exc:  # Likely due to unsupported configuration
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:  # pragma: no cover - defensive guardrail
-            raise HTTPException(status_code=500, detail="Research failed") from exc
+            logger.exception("Research failed")
+            raise HTTPException(
+                status_code=500,
+                detail="Research failed",
+            ) from exc
 
         todo_payload = [
             {
@@ -876,6 +969,14 @@ def create_app() -> FastAPI:
         try:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)
+
+            ensure_llm_available(
+                agent,
+                config,
+            )
+
+        except HTTPException:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

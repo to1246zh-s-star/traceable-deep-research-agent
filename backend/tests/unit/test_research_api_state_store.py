@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import main
@@ -52,3 +53,13 @@ def test_research_response_contains_research_id(monkeypatch):
 
     assert payload["research_id"].startswith("research_")
     assert payload["report_markdown"] == "report"
+
+
+@pytest.fixture(autouse=True)
+def _mock_llm_preflight(monkeypatch):
+    """Keep API state tests isolated from external LLM availability."""
+    monkeypatch.setattr(
+        main,
+        "_probe_llm",
+        lambda agent: "OK",
+    )

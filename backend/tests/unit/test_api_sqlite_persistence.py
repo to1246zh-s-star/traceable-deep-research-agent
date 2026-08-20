@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import main as main_module
@@ -156,3 +157,13 @@ def test_configuration_reads_research_db_path(
     config = main_module.Configuration.from_env()
 
     assert config.research_db_path == str(db_path)
+
+
+@pytest.fixture(autouse=True)
+def _mock_llm_preflight(monkeypatch):
+    """Keep persistence tests isolated from external LLM availability."""
+    monkeypatch.setattr(
+        main_module,
+        "_probe_llm",
+        lambda agent: "OK",
+    )

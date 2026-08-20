@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import main
@@ -110,3 +111,13 @@ def test_stream_saved_state_can_be_queried(monkeypatch):
 
     assert len(payload["traces"]) == 1
     assert payload["traces"][0]["trace_id"] == "trace_stream"
+
+
+@pytest.fixture(autouse=True)
+def _mock_llm_preflight(monkeypatch):
+    """Keep SSE state tests isolated from external LLM availability."""
+    monkeypatch.setattr(
+        main,
+        "_probe_llm",
+        lambda agent: "OK",
+    )
