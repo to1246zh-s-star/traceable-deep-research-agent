@@ -47,6 +47,7 @@ from services.decision_input_builder import (
 from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
 from services.execution_trace import ExecutionTraceService
+from services.adaptive_decision_loop import run_adaptive_decision_loop
 from services.adaptive_research import (
     plan_adaptive_iteration,
     record_iteration_finished,
@@ -376,6 +377,10 @@ class DeepResearchAgent:
         if state.decision_case is not None:
             try:
                 self.execute_decision_intelligence(state)
+
+                self.execute_adaptive_decision_loop(
+                    state
+                )
             except Exception:
                 logger.exception(
                     "Decision intelligence failed; "
@@ -521,6 +526,10 @@ class DeepResearchAgent:
         if state.decision_case is not None:
             try:
                 self.execute_decision_intelligence(state)
+
+                self.execute_adaptive_decision_loop(
+                    state
+                )
             except Exception:
                 logger.exception(
                     "Decision intelligence failed during streaming; "
@@ -660,6 +669,26 @@ class DeepResearchAgent:
 
         return self._get_execution_trace_service().summarize_events(
             state,
+        )
+
+    def execute_adaptive_decision_loop(
+        self,
+        state: SummaryState,
+        *,
+        max_tasks_per_iteration: int = 3,
+    ) -> SummaryState:
+        """
+        Run bounded adaptive decision research using the existing
+        follow-up executor and decision-intelligence pass.
+        """
+
+        return run_adaptive_decision_loop(
+            state,
+            execute_followups=self.execute_adaptive_followups,
+            execute_decision_intelligence=(
+                self.execute_decision_intelligence
+            ),
+            max_tasks_per_iteration=max_tasks_per_iteration,
         )
 
     def execute_adaptive_followups(

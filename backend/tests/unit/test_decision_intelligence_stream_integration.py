@@ -206,3 +206,167 @@ def test_stream_decision_failure_does_not_block_report():
     )
 
     assert events[-1]["type"] == "done"
+
+
+def test_stream_executes_adaptive_loop_before_report():
+    call_order = []
+    agent = make_agent(call_order)
+
+    decision = DecisionCase(
+        decision_id="dec_stream_adaptive",
+        question="Choose A or B",
+    )
+
+    def attach_decision(state):
+        state.decision_case = decision
+        return decision
+
+    def execute_task(
+        state,
+        task,
+        *,
+        emit_stream,
+        step=None,
+    ):
+        call_order.append(
+            f"research_{task.id}"
+        )
+        task.status = "completed"
+
+        yield {
+            "type": "task_status",
+            "task_id": task.id,
+            "status": "completed",
+        }
+
+    def execute_intelligence(state):
+        call_order.append(
+            "decision_intelligence"
+        )
+        return state
+
+    def execute_adaptive_loop(state):
+        call_order.append(
+            "adaptive_loop"
+        )
+        return state
+
+    agent._attach_decision_case = attach_decision
+    agent._execute_task = execute_task
+    agent.execute_decision_intelligence = (
+        execute_intelligence
+    )
+    agent.execute_adaptive_decision_loop = (
+        execute_adaptive_loop
+    )
+
+    events = list(
+        agent.run_stream(
+            "Choose A or B"
+        )
+    )
+
+    assert call_order.index(
+        "adaptive_loop"
+    ) > call_order.index(
+        "decision_intelligence"
+    )
+
+    assert call_order.index(
+        "adaptive_loop"
+    ) > call_order.index(
+        "research_1"
+    )
+
+    assert call_order.index(
+        "adaptive_loop"
+    ) > call_order.index(
+        "research_2"
+    )
+
+    assert call_order.index(
+        "adaptive_loop"
+    ) < call_order.index(
+        "report"
+    )
+
+    assert events[-2]["type"] == (
+        "final_report"
+    )
+    assert events[-1]["type"] == "done"
+
+
+def test_stream_adaptive_failure_does_not_block_report():
+    call_order = []
+    agent = make_agent(call_order)
+
+    decision = DecisionCase(
+        decision_id="dec_stream_adaptive_fail",
+        question="Choose A or B",
+    )
+
+    def attach_decision(state):
+        state.decision_case = decision
+        return decision
+
+    def execute_task(
+        state,
+        task,
+        *,
+        emit_stream,
+        step=None,
+    ):
+        task.status = "completed"
+
+        if False:
+            yield None
+
+    def execute_intelligence(state):
+        call_order.append(
+            "decision_intelligence"
+        )
+        return state
+
+    def fail_adaptive(state):
+        call_order.append(
+            "adaptive_loop"
+        )
+        raise RuntimeError(
+            "adaptive streaming failure"
+        )
+
+    agent._attach_decision_case = attach_decision
+    agent._execute_task = execute_task
+    agent.execute_decision_intelligence = (
+        execute_intelligence
+    )
+    agent.execute_adaptive_decision_loop = (
+        fail_adaptive
+    )
+
+    events = list(
+        agent.run_stream(
+            "Choose A or B"
+        )
+    )
+
+    assert (
+        "decision_intelligence"
+        in call_order
+    )
+    assert "adaptive_loop" in call_order
+    assert "report" in call_order
+
+    assert call_order.index(
+        "adaptive_loop"
+    ) < call_order.index(
+        "report"
+    )
+
+    assert any(
+        event.get("type")
+        == "final_report"
+        for event in events
+    )
+
+    assert events[-1]["type"] == "done"
