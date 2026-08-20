@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Any
@@ -92,6 +93,17 @@ class ConstraintResolver:
         self.last_parse_status = "unknown"
         self.retry_count = 0
 
+        # Runtime-only cache for repeated adaptive decision passes.
+        #
+        # The cache intentionally lives on the resolver instance rather than
+        # SummaryState persistence. It reduces duplicate LLM calls within one
+        # research workflow without introducing persisted cache invalidation
+        # semantics.
+        self._candidate_cache: dict[
+            tuple[str, str],
+            tuple[str, dict[str, bool]],
+        ] = {}
+
     def resolve(
         self,
         state: SummaryState,
@@ -124,27 +136,83 @@ class ConstraintResolver:
                 candidate.name,
             )
 
+            cache_key = (
+                decision.decision_id,
+                candidate.candidate_id,
+            )
+
             if not candidate_evidence:
+                # Never allow stale cached judgments to leak into a state
+                # where the candidate no longer has relevant evidence.
+                self._candidate_cache.pop(
+                    cache_key,
+                    None,
+                )
                 continue
 
-            resolutions = self._resolve_candidate_constraints(
+            fingerprint = self._candidate_fingerprint(
                 candidate_name=candidate.name,
                 constraints=constraints,
                 evidence=candidate_evidence,
             )
 
-            for resolution in resolutions:
-                status = resolution["status"]
+            cached = self._candidate_cache.get(
+                cache_key
+            )
 
-                if status == "unknown":
-                    continue
-
-                results.setdefault(
-                    candidate.candidate_id,
-                    {},
-                )[resolution["constraint_id"]] = (
-                    status == "satisfied"
+            if (
+                cached is not None
+                and cached[0] == fingerprint
+            ):
+                candidate_results = dict(
+                    cached[1]
                 )
+            else:
+                resolutions = (
+                    self._resolve_candidate_constraints(
+                        candidate_name=candidate.name,
+                        constraints=constraints,
+                        evidence=candidate_evidence,
+                    )
+                )
+
+                candidate_results: dict[
+                    str,
+                    bool,
+                ] = {}
+
+                for resolution in resolutions:
+                    status = resolution["status"]
+
+                    if status == "unknown":
+                        continue
+
+                    candidate_results[
+                        resolution["constraint_id"]
+                    ] = (
+                        status == "satisfied"
+                    )
+
+                # Cache only a successfully parsed LLM response.
+                #
+                # A successful response may contain unknown judgments; those
+                # are intentionally represented by omission and are safe to
+                # reuse until the evidence or constraints change.
+                #
+                # Failed / malformed output must never be cached so a later
+                # adaptive pass can retry it.
+                if self.last_parse_status == "success":
+                    self._candidate_cache[
+                        cache_key
+                    ] = (
+                        fingerprint,
+                        dict(candidate_results),
+                    )
+
+            if candidate_results:
+                results[
+                    candidate.candidate_id
+                ] = candidate_results
 
         return results
 
@@ -338,6 +406,35 @@ class ConstraintResolver:
             )
 
         return validated
+
+    @staticmethod
+    def _candidate_fingerprint(
+        *,
+        candidate_name: str,
+        constraints: list[dict[str, str]],
+        evidence: str,
+    ) -> str:
+        """
+        Fingerprint exactly the semantic inputs used for one candidate.
+
+        Any change to candidate identity, hard constraints, or the evidence
+        context invalidates the cached constraint result.
+        """
+
+        payload = json.dumps(
+            {
+                "candidate_name": candidate_name,
+                "constraints": constraints,
+                "evidence": evidence,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+        return hashlib.sha256(
+            payload.encode("utf-8")
+        ).hexdigest()
 
     @staticmethod
     def _candidate_evidence(

@@ -495,3 +495,350 @@ def test_missing_candidate_evidence_skips_llm_call():
 
     assert results == {}
     assert agent.calls == 0
+
+
+def test_identical_second_pass_reuses_candidate_cache():
+    agent = StubAgent([
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            }
+          ]
+        }
+        """,
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Insufficient."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Insufficient."
+            }
+          ]
+        }
+        """,
+    ])
+
+    resolver = ConstraintResolver(
+        agent,
+        DummyConfig(),
+    )
+
+    state = make_state()
+    decision = make_decision()
+
+    first = resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert agent.calls == 2
+
+    second = resolver.resolve(
+        state,
+        decision,
+    )
+
+    # No evidence or constraint changed.
+    assert agent.calls == 2
+    assert second == first
+
+
+def test_only_candidate_with_changed_evidence_is_recomputed():
+    agent = StubAgent([
+        # First pass: Qdrant
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Qdrant supports self-hosting."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Qdrant supports Linux."
+            }
+          ]
+        }
+        """,
+
+        # First pass: Milvus
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.8,
+              "rationale": "Milvus supports self-hosting."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.8,
+              "rationale": "Milvus supports Linux."
+            }
+          ]
+        }
+        """,
+
+        # Second pass: only Qdrant should be recomputed.
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.95,
+              "rationale": "Additional Qdrant evidence."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.95,
+              "rationale": "Additional Qdrant evidence."
+            }
+          ]
+        }
+        """,
+    ])
+
+    resolver = ConstraintResolver(
+        agent,
+        DummyConfig(),
+    )
+
+    state = make_state()
+    decision = make_decision()
+
+    resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert agent.calls == 2
+
+    state.evidence_items.append(
+        Evidence(
+            evidence_id="evi_qdrant_new",
+            task_id=3,
+            trace_id="trace_3",
+            query="More Qdrant deployment evidence",
+            backend="web",
+            source_title="Additional Qdrant documentation",
+            snippet=(
+                "Qdrant provides another documented "
+                "self-hosted Linux deployment path."
+            ),
+        )
+    )
+
+    second = resolver.resolve(
+        state,
+        decision,
+    )
+
+    # Qdrant fingerprint changed.
+    # Milvus fingerprint stayed unchanged.
+    assert agent.calls == 3
+
+    assert second["cand_qdrant"] == {
+        "con_self_host": True,
+        "con_linux": True,
+    }
+
+    assert second["cand_milvus"] == {
+        "con_self_host": True,
+        "con_linux": True,
+    }
+
+
+def test_constraint_change_invalidates_candidate_cache():
+    agent = StubAgent([
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            }
+          ]
+        }
+        """,
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Unknown."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Unknown."
+            }
+          ]
+        }
+        """,
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Re-evaluated."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Re-evaluated."
+            }
+          ]
+        }
+        """,
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Re-evaluated."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "unknown",
+              "strength": 0.1,
+              "rationale": "Re-evaluated."
+            }
+          ]
+        }
+        """,
+    ])
+
+    resolver = ConstraintResolver(
+        agent,
+        DummyConfig(),
+    )
+
+    state = make_state()
+    decision = make_decision()
+
+    resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert agent.calls == 2
+
+    decision.constraints[0].text = (
+        "Must support fully self-managed hosting"
+    )
+
+    resolver.resolve(
+        state,
+        decision,
+    )
+
+    # Constraint input changed for both candidates.
+    assert agent.calls == 4
+
+
+def test_failed_resolution_is_not_cached():
+    decision = make_decision()
+
+    # Keep only Qdrant so call counting is unambiguous.
+    decision.candidates = [
+        decision.candidates[0]
+    ]
+
+    agent = StubAgent([
+        # First resolve: initial failure + retry failure.
+        '{"results":',
+        '{"results":',
+
+        # Second resolve should call LLM again.
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Recovered later."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Recovered later."
+            }
+          ]
+        }
+        """,
+    ])
+
+    resolver = ConstraintResolver(
+        agent,
+        DummyConfig(),
+    )
+
+    state = make_state()
+
+    first = resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert first == {}
+    assert agent.calls == 2
+
+    second = resolver.resolve(
+        state,
+        decision,
+    )
+
+    # Failed first pass was not cached.
+    assert agent.calls == 3
+
+    assert second == {
+        "cand_qdrant": {
+            "con_self_host": True,
+            "con_linux": True,
+        }
+    }
