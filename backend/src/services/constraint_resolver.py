@@ -9,11 +9,7 @@ from typing import Any
 from hello_agents import ToolAwareSimpleAgent
 
 from config import Configuration
-from models import (
-    DecisionCase,
-    Evidence,
-    SummaryState,
-)
+from models import DecisionCase, SummaryState
 from utils import strip_thinking_tokens
 
 logger = logging.getLogger(__name__)
@@ -23,23 +19,28 @@ CONSTRAINT_PROMPT = """
 You are a conservative technical constraint evaluator.
 
 Determine whether the supplied evidence establishes that one candidate
-satisfies or violates one hard decision constraint.
+satisfies or violates each supplied hard decision constraint.
 
 Candidate:
 {candidate}
 
-Constraint:
-{constraint}
+Constraints:
+{constraints}
 
 Evidence:
 {evidence}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON in this exact structure:
 
 {{
-  "status": "satisfied",
-  "strength": 0.0,
-  "rationale": "brief evidence-grounded explanation"
+  "results": [
+    {{
+      "constraint_id": "constraint id",
+      "status": "satisfied",
+      "strength": 0.0,
+      "rationale": "brief evidence-grounded explanation"
+    }}
+  ]
 }}
 
 Allowed status values:
@@ -63,7 +64,10 @@ Rules:
 4. If uncertain, return "unknown".
 5. strength must be between 0 and 1.
 6. Do not evaluate source trustworthiness.
-7. Return no markdown and no text outside the JSON object.
+7. Return one result for each supplied constraint when possible.
+8. Preserve the supplied constraint_id exactly.
+9. Do not invent constraint IDs.
+10. Return no markdown and no text outside the JSON object.
 """.strip()
 
 
@@ -94,16 +98,25 @@ class ConstraintResolver:
         decision: DecisionCase,
     ) -> dict[str, dict[str, bool]]:
         """
-        Resolve supported candidate × constraint pairs.
+        Resolve candidate × constraint results using one LLM call per
+        candidate rather than one call per candidate × constraint pair.
 
-        Unknown pairs are intentionally omitted so the existing decision
-        evaluator preserves them as unresolved.
+        Unknown, missing, malformed, or failed judgments are intentionally
+        omitted so the deterministic evaluator preserves them as unresolved.
         """
 
         results: dict[str, dict[str, bool]] = {}
 
         if not decision.constraints:
             return results
+
+        constraints = [
+            {
+                "constraint_id": constraint.constraint_id,
+                "text": constraint.text,
+            }
+            for constraint in decision.constraints
+        ]
 
         for candidate in decision.candidates:
             candidate_evidence = self._candidate_evidence(
@@ -114,16 +127,13 @@ class ConstraintResolver:
             if not candidate_evidence:
                 continue
 
-            for constraint in decision.constraints:
-                resolution = self._resolve_pair(
-                    candidate_name=candidate.name,
-                    constraint_text=constraint.text,
-                    evidence=candidate_evidence,
-                )
+            resolutions = self._resolve_candidate_constraints(
+                candidate_name=candidate.name,
+                constraints=constraints,
+                evidence=candidate_evidence,
+            )
 
-                if resolution is None:
-                    continue
-
+            for resolution in resolutions:
                 status = resolution["status"]
 
                 if status == "unknown":
@@ -132,31 +142,43 @@ class ConstraintResolver:
                 results.setdefault(
                     candidate.candidate_id,
                     {},
-                )[constraint.constraint_id] = (
+                )[resolution["constraint_id"]] = (
                     status == "satisfied"
                 )
 
         return results
 
-    def _resolve_pair(
+    def _resolve_candidate_constraints(
         self,
         *,
         candidate_name: str,
-        constraint_text: str,
+        constraints: list[dict[str, str]],
         evidence: str,
-    ) -> dict[str, Any] | None:
-        """Resolve one candidate × constraint pair with one retry."""
+    ) -> list[dict[str, Any]]:
+        """Resolve all hard constraints for one candidate with one retry."""
 
         self.retry_count = 0
         self.last_parse_status = "unknown"
 
+        allowed_constraint_ids = {
+            item["constraint_id"]
+            for item in constraints
+        }
+
         prompt = CONSTRAINT_PROMPT.format(
             candidate=candidate_name,
-            constraint=constraint_text,
+            constraints=json.dumps(
+                constraints,
+                ensure_ascii=False,
+                indent=2,
+            ),
             evidence=evidence,
         )
 
-        result = self._run_and_parse(prompt)
+        result = self._run_and_parse(
+            prompt,
+            allowed_constraint_ids=allowed_constraint_ids,
+        )
 
         if (
             result is None
@@ -180,15 +202,19 @@ class ConstraintResolver:
             )
 
             result = self._run_and_parse(
-                retry_prompt
+                retry_prompt,
+                allowed_constraint_ids=allowed_constraint_ids,
             )
 
-        return result
+        # Fail closed: unresolved constraints are represented by omission.
+        return result or []
 
     def _run_and_parse(
         self,
         prompt: str,
-    ) -> dict[str, Any] | None:
+        *,
+        allowed_constraint_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
         response = self._agent.run(prompt)
         self._agent.clear_history()
 
@@ -197,12 +223,17 @@ class ConstraintResolver:
             response[:500],
         )
 
-        return self._extract_payload(response)
+        return self._extract_payload(
+            response,
+            allowed_constraint_ids=allowed_constraint_ids,
+        )
 
     def _extract_payload(
         self,
         raw_response: str,
-    ) -> dict[str, Any] | None:
+        *,
+        allowed_constraint_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
         text = (raw_response or "").strip()
 
         if not text:
@@ -227,56 +258,86 @@ class ConstraintResolver:
             self.last_parse_status = "json_error"
             return None
 
-        if not self._is_valid_payload(payload):
+        validated = self._validate_payload(
+            payload,
+            allowed_constraint_ids=allowed_constraint_ids,
+        )
+
+        if validated is None:
             self.last_parse_status = "invalid_schema"
             return None
 
         self.last_parse_status = "success"
+        return validated
 
-        return {
-            "status": payload["status"],
-            "strength": float(
-                payload["strength"]
-            ),
-            "rationale": (
-                payload.get("rationale")
-                or ""
-            ).strip(),
-        }
-
-    def _is_valid_payload(
+    def _validate_payload(
         self,
         payload: Any,
-    ) -> bool:
+        *,
+        allowed_constraint_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
         if not isinstance(payload, dict):
-            return False
+            return None
 
-        status = payload.get("status")
-        strength = payload.get("strength")
-        rationale = payload.get("rationale")
+        raw_results = payload.get("results")
 
-        if status not in self.VALID_STATUSES:
-            return False
+        if not isinstance(raw_results, list):
+            return None
 
-        if isinstance(strength, bool):
-            return False
+        validated: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
 
-        if not isinstance(
-            strength,
-            (int, float),
-        ):
-            return False
+        for item in raw_results:
+            if not isinstance(item, dict):
+                return None
 
-        if not 0.0 <= float(strength) <= 1.0:
-            return False
+            constraint_id = item.get("constraint_id")
+            status = item.get("status")
+            strength = item.get("strength")
+            rationale = item.get("rationale")
 
-        if (
-            rationale is not None
-            and not isinstance(rationale, str)
-        ):
-            return False
+            if (
+                not isinstance(constraint_id, str)
+                or constraint_id not in allowed_constraint_ids
+                or constraint_id in seen_ids
+            ):
+                return None
 
-        return True
+            if status not in self.VALID_STATUSES:
+                return None
+
+            if isinstance(strength, bool):
+                return None
+
+            if not isinstance(
+                strength,
+                (int, float),
+            ):
+                return None
+
+            if not 0.0 <= float(strength) <= 1.0:
+                return None
+
+            if (
+                rationale is not None
+                and not isinstance(rationale, str)
+            ):
+                return None
+
+            seen_ids.add(constraint_id)
+
+            validated.append(
+                {
+                    "constraint_id": constraint_id,
+                    "status": status,
+                    "strength": float(strength),
+                    "rationale": (
+                        rationale or ""
+                    ).strip(),
+                }
+            )
+
+        return validated
 
     @staticmethod
     def _candidate_evidence(
@@ -320,13 +381,16 @@ class ConstraintResolver:
     ) -> str:
         if failure_status == "json_error":
             return (
-                "Return only one syntactically valid JSON object."
+                "Return only one syntactically valid JSON object "
+                'with a "results" array.'
             )
 
         if failure_status == "invalid_schema":
             return (
-                "status must be satisfied, violated, or unknown; "
-                "strength must be between 0 and 1."
+                'Return {"results": [...]} only. Each result must use '
+                "one supplied constraint_id exactly; status must be "
+                "satisfied, violated, or unknown; strength must be "
+                "between 0 and 1."
             )
 
         return (

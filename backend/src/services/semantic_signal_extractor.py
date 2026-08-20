@@ -1,9 +1,10 @@
-"""Semantic interpretation of evidence signals using reliable JSON output."""
+"""Semantic interpretation of evidence signals using batched JSON output."""
 
 from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from typing import Any
 
 from hello_agents import ToolAwareSimpleAgent
@@ -23,46 +24,55 @@ logger = logging.getLogger(__name__)
 SIGNAL_PROMPT = """
 You are a conservative technical evidence interpreter.
 
-You are given:
-- one technical decision candidate,
-- one decision criterion,
-- one retrieved evidence item.
+You are given ONE retrieved evidence item and multiple decision targets.
 
-Your task is ONLY to determine how this evidence affects that candidate
-with respect to that criterion.
-
-Candidate:
-{name}
-
-Criterion:
-{criterion}
+For each target, determine ONLY how this evidence affects the specified
+candidate with respect to the specified criterion.
 
 Evidence:
 {evidence}
 
-Return ONLY valid JSON:
+Targets:
+{targets}
+
+Return ONLY valid JSON in this exact structure:
 
 {{
-  "direction": "positive",
-  "strength": 0.0,
-  "rationale": "brief evidence-grounded explanation"
+  "results": [
+    {{
+      "signal_id": "supplied signal id",
+      "direction": "positive",
+      "strength": 0.0,
+      "rationale": "brief evidence-grounded explanation"
+    }}
+  ]
 }}
 
 Allowed direction values:
-- "positive": evidence supports the candidate on this criterion
-- "negative": evidence indicates a disadvantage on this criterion
-- "neutral": evidence is relevant but does not establish either direction
+
+- "positive":
+  evidence supports the candidate on this criterion.
+
+- "negative":
+  evidence indicates a disadvantage for the candidate on this criterion.
+
+- "neutral":
+  evidence is relevant but does not establish either direction.
 
 Rules:
+
 1. Use only the supplied evidence.
 2. Never infer missing facts.
-3. If the evidence is ambiguous, descriptive, incomplete, or does not
+3. If evidence is ambiguous, descriptive, incomplete, or does not
    establish an advantage/disadvantage, use "neutral".
 4. strength must be between 0 and 1.
 5. Neutral evidence should normally have low strength.
-6. Do not evaluate source trustworthiness. Source confidence and
-   applicability are handled separately by deterministic services.
-7. Return no markdown and no text outside the JSON object.
+6. Do not evaluate source trustworthiness.
+7. Do not evaluate applicability.
+8. Preserve every supplied signal_id exactly.
+9. Do not invent signal IDs.
+10. Return one result for every target when possible.
+11. Return no markdown or text outside the JSON object.
 """.strip()
 
 
@@ -70,8 +80,11 @@ class SemanticSignalExtractor:
     """
     Convert conservative neutral signal proposals into semantic directions.
 
-    Candidate/criterion relevance is determined upstream. This service only
-    interprets direction and strength from the associated evidence text.
+    Candidate/criterion relevance is determined upstream.
+
+    Proposals sharing one evidence item are interpreted in one batched
+    LLM call to reduce inference requests while preserving the original
+    deterministic proposal identities and weights.
     """
 
     VALID_DIRECTIONS = {
@@ -98,7 +111,12 @@ class SemanticSignalExtractor:
         decision: DecisionCase,
         proposals: list[EvidenceSignal],
     ) -> list[EvidenceSignal]:
-        """Semantically interpret existing candidate × criterion proposals."""
+        """
+        Semantically interpret candidate × criterion proposals.
+
+        One LLM call is made per unique evidence_id rather than per
+        individual proposal.
+        """
 
         evidence_by_id = {
             evidence.evidence_id: evidence
@@ -115,39 +133,69 @@ class SemanticSignalExtractor:
             for criterion in decision.criteria
         }
 
-        interpreted: list[EvidenceSignal] = []
+        grouped: dict[str, list[EvidenceSignal]] = defaultdict(list)
 
         for proposal in proposals:
-            evidence = evidence_by_id.get(
-                proposal.evidence_id
-            )
-            candidate = candidate_by_id.get(
-                proposal.candidate_id
-            )
-            criterion = criterion_by_id.get(
-                proposal.criterion_id
-            )
-
             if (
-                evidence is None
-                or candidate is None
-                or criterion is None
+                proposal.evidence_id not in evidence_by_id
+                or proposal.candidate_id not in candidate_by_id
+                or proposal.criterion_id not in criterion_by_id
             ):
                 continue
 
-            result = self._classify(
+            grouped[proposal.evidence_id].append(proposal)
+
+        interpreted_by_signal_id: dict[str, EvidenceSignal] = {}
+
+        for evidence_id, evidence_proposals in grouped.items():
+            evidence = evidence_by_id[evidence_id]
+
+            targets = []
+
+            for proposal in evidence_proposals:
+                candidate = candidate_by_id[
+                    proposal.candidate_id
+                ]
+                criterion = criterion_by_id[
+                    proposal.criterion_id
+                ]
+
+                targets.append(
+                    {
+                        "signal_id": proposal.signal_id,
+                        "candidate_id": proposal.candidate_id,
+                        "candidate_name": candidate.name,
+                        "criterion_id": proposal.criterion_id,
+                        "criterion_name": criterion.name,
+                    }
+                )
+
+            results = self._classify_batch(
                 evidence=evidence,
-                candidate_name=candidate.name,
-                criterion_name=criterion.name,
+                targets=targets,
             )
 
-            if result is None:
-                # Parsing/LLM failure must not invent direction.
-                interpreted.append(proposal)
-                continue
+            result_by_signal_id = {
+                result["signal_id"]: result
+                for result in (results or [])
+            }
 
-            interpreted.append(
-                EvidenceSignal(
+            for proposal in evidence_proposals:
+                result = result_by_signal_id.get(
+                    proposal.signal_id
+                )
+
+                if result is None:
+                    # Missing / failed semantic output must remain neutral.
+                    interpreted_by_signal_id[
+                        proposal.signal_id
+                    ] = proposal
+                    continue
+
+                interpreted_by_signal_id[
+                    proposal.signal_id
+                ] = EvidenceSignal(
+                    signal_id=proposal.signal_id,
                     evidence_id=proposal.evidence_id,
                     candidate_id=proposal.candidate_id,
                     criterion_id=proposal.criterion_id,
@@ -158,18 +206,32 @@ class SemanticSignalExtractor:
                     atomic_claim_id=proposal.atomic_claim_id,
                     rationale=result["rationale"],
                 )
+
+        # Preserve ordering only for proposals whose references were valid.
+        # Invalid evidence/candidate/criterion references keep the historical
+        # contract: they are skipped rather than silently reintroduced.
+        valid_signal_ids = {
+            proposal.signal_id
+            for evidence_proposals in grouped.values()
+            for proposal in evidence_proposals
+        }
+
+        return [
+            interpreted_by_signal_id.get(
+                proposal.signal_id,
+                proposal,
             )
+            for proposal in proposals
+            if proposal.signal_id in valid_signal_ids
+        ]
 
-        return interpreted
-
-    def _classify(
+    def _classify_batch(
         self,
         *,
         evidence: Evidence,
-        candidate_name: str,
-        criterion_name: str,
-    ) -> dict[str, Any] | None:
-        """Run one conservative semantic classification with one retry."""
+        targets: list[dict[str, str]],
+    ) -> list[dict[str, Any]] | None:
+        """Interpret all targets associated with one evidence item."""
 
         self.retry_count = 0
         self.last_parse_status = "unknown"
@@ -180,13 +242,24 @@ class SemanticSignalExtractor:
             self.last_parse_status = "empty_evidence"
             return None
 
+        allowed_signal_ids = {
+            target["signal_id"]
+            for target in targets
+        }
+
         prompt = SIGNAL_PROMPT.format(
-            name=candidate_name,
-            criterion=criterion_name,
             evidence=evidence_text,
+            targets=json.dumps(
+                targets,
+                ensure_ascii=False,
+                indent=2,
+            ),
         )
 
-        result = self._run_and_parse(prompt)
+        result = self._run_and_parse(
+            prompt,
+            allowed_signal_ids=allowed_signal_ids,
+        )
 
         if (
             result is None
@@ -210,7 +283,8 @@ class SemanticSignalExtractor:
             )
 
             result = self._run_and_parse(
-                retry_prompt
+                retry_prompt,
+                allowed_signal_ids=allowed_signal_ids,
             )
 
         return result
@@ -218,24 +292,31 @@ class SemanticSignalExtractor:
     def _run_and_parse(
         self,
         prompt: str,
-    ) -> dict[str, Any] | None:
-        """Invoke semantic agent and validate its JSON response."""
+        *,
+        allowed_signal_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
+        """Invoke semantic agent and validate one batched JSON response."""
 
         response = self._agent.run(prompt)
         self._agent.clear_history()
 
         logger.info(
-            "Semantic signal output (truncated): %s",
+            "Semantic signal batch output (truncated): %s",
             response[:500],
         )
 
-        return self._extract_payload(response)
+        return self._extract_payload(
+            response,
+            allowed_signal_ids=allowed_signal_ids,
+        )
 
     def _extract_payload(
         self,
         raw_response: str,
-    ) -> dict[str, Any] | None:
-        """Parse one semantic signal result."""
+        *,
+        allowed_signal_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
+        """Parse one batched semantic signal result."""
 
         text = (raw_response or "").strip()
 
@@ -265,101 +346,124 @@ class SemanticSignalExtractor:
             self.last_parse_status = "json_error"
             return None
 
-        if not self._is_valid_payload(payload):
+        validated = self._validate_payload(
+            payload,
+            allowed_signal_ids=allowed_signal_ids,
+        )
+
+        if validated is None:
             self.last_parse_status = "invalid_schema"
             return None
 
         self.last_parse_status = "success"
 
-        return {
-            "direction": payload["direction"],
-            "strength": float(
-                payload["strength"]
-            ),
-            "rationale": (
-                payload.get("rationale")
-                or ""
-            ).strip(),
-        }
+        return validated
 
-    def _is_valid_payload(
+    def _validate_payload(
         self,
         payload: Any,
-    ) -> bool:
-        """Validate semantic signal JSON schema."""
-
+        *,
+        allowed_signal_ids: set[str],
+    ) -> list[dict[str, Any]] | None:
         if not isinstance(payload, dict):
-            return False
+            return None
 
-        direction = payload.get("direction")
-        strength = payload.get("strength")
-        rationale = payload.get("rationale")
+        raw_results = payload.get("results")
 
-        if direction not in self.VALID_DIRECTIONS:
-            return False
+        if not isinstance(raw_results, list):
+            return None
 
-        if isinstance(strength, bool):
-            return False
+        validated: list[dict[str, Any]] = []
+        seen_signal_ids: set[str] = set()
 
-        if not isinstance(
-            strength,
-            (int, float),
-        ):
-            return False
+        for item in raw_results:
+            if not isinstance(item, dict):
+                return None
 
-        if not 0.0 <= float(strength) <= 1.0:
-            return False
+            signal_id = item.get("signal_id")
+            direction = item.get("direction")
+            strength = item.get("strength")
+            rationale = item.get("rationale")
 
-        if (
-            rationale is not None
-            and not isinstance(rationale, str)
-        ):
-            return False
+            if (
+                not isinstance(signal_id, str)
+                or signal_id not in allowed_signal_ids
+                or signal_id in seen_signal_ids
+            ):
+                return None
 
-        return True
+            if direction not in self.VALID_DIRECTIONS:
+                return None
 
-    @staticmethod
-    def _repair_instruction(
-        failure_status: str,
-    ) -> str:
-        """Return targeted JSON repair instruction."""
+            if isinstance(strength, bool):
+                return None
 
-        if failure_status == "json_error":
-            return (
-                "Your previous response was invalid JSON. "
-                "Return only one valid JSON object."
+            if not isinstance(
+                strength,
+                (int, float),
+            ):
+                return None
+
+            if not 0.0 <= float(strength) <= 1.0:
+                return None
+
+            if (
+                rationale is not None
+                and not isinstance(rationale, str)
+            ):
+                return None
+
+            seen_signal_ids.add(signal_id)
+
+            validated.append(
+                {
+                    "signal_id": signal_id,
+                    "direction": direction,
+                    "strength": float(strength),
+                    "rationale": (
+                        rationale or ""
+                    ).strip(),
+                }
             )
 
-        if failure_status == "invalid_schema":
-            return (
-                "Your previous response violated the schema. "
-                "direction must be positive, negative, or neutral; "
-                "strength must be a number between 0 and 1."
-            )
-
-        return (
-            "Your previous response was empty. "
-            "Return only the required JSON object."
-        )
+        return validated
 
     @staticmethod
     def _evidence_text(
         evidence: Evidence,
     ) -> str:
-        """Build bounded semantic evidence context."""
-
         parts = [
-            part.strip()
-            for part in (
-                evidence.source_title,
-                evidence.snippet,
-                evidence.content,
-            )
-            if isinstance(part, str)
-            and part.strip()
+            evidence.source_title,
+            evidence.snippet,
+            evidence.content,
         ]
 
-        text = "\n".join(parts)
+        text = "\n\n".join(
+            part.strip()
+            for part in parts
+            if isinstance(part, str)
+            and part.strip()
+        )
 
-        # Prevent unexpectedly huge pages from becoming a semantic prompt.
         return text[:6000]
+
+    @staticmethod
+    def _repair_instruction(
+        failure_status: str,
+    ) -> str:
+        if failure_status == "json_error":
+            return (
+                "Return only one syntactically valid JSON object "
+                'with a "results" array.'
+            )
+
+        if failure_status == "invalid_schema":
+            return (
+                'Return {"results": [...]} only. Preserve supplied '
+                "signal_id values exactly. direction must be positive, "
+                "negative, or neutral; strength must be between 0 and 1."
+            )
+
+        return (
+            "Return only the required JSON object."
+        )
