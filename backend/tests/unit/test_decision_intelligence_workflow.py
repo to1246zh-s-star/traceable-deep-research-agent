@@ -159,8 +159,33 @@ def test_full_workflow_uses_semantic_signals():
         state.evidence_assessments
     ) == 2
 
-    assert state.evidence_signals == (
-        semantic_signals
+    assert len(state.evidence_signals) == 2
+
+    assert (
+        state.evidence_signals[0].direction
+        == semantic_signals[0].direction
+    )
+    assert (
+        state.evidence_signals[0].strength
+        == semantic_signals[0].strength
+    )
+
+    assert (
+        state.evidence_signals[1].direction
+        == semantic_signals[1].direction
+    )
+    assert (
+        state.evidence_signals[1].strength
+        == semantic_signals[1].strength
+    )
+
+    # Deterministic evidence weights come from the freshly rebuilt
+    # proposals rather than the semantic extractor output.
+    assert (
+        state.evidence_signals[0].source_confidence
+        != semantic_signals[0].source_confidence
+        or state.evidence_signals[0].applicability
+        != semantic_signals[0].applicability
     )
 
     assert state.decision_evaluation is not None
@@ -501,3 +526,109 @@ def test_explicit_constraint_results_skip_resolver(monkeypatch):
 
     assert result is state
     assert captured["constraint_results"] == explicit_results
+
+
+def test_decision_intelligence_reuses_existing_semantic_signals():
+    from models import EvidenceSignal
+    from services.decision_input_builder import (
+        LEXICAL_SIGNAL_RATIONALE,
+    )
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    state = make_state()
+    decision = state.decision_case
+
+    assert decision is not None
+
+    existing = EvidenceSignal(
+        signal_id="sig_old",
+        evidence_id=state.evidence_items[0].evidence_id,
+        candidate_id=decision.candidates[0].candidate_id,
+        criterion_id=decision.criteria[0].criterion_id,
+        direction="positive",
+        strength=0.8,
+        source_confidence=0.9,
+        applicability=0.8,
+        rationale="Previously interpreted semantic result.",
+    )
+
+    state.evidence_signals = [existing]
+
+    calls = []
+
+    def fake_extract(
+        state_arg,
+        decision_arg,
+        proposals,
+    ):
+        calls.append(list(proposals))
+        return proposals
+
+    agent.extract_semantic_signals = fake_extract
+
+    agent.execute_decision_intelligence(state)
+
+    # The already interpreted stable key should not be sent back to LLM.
+    assert all(
+        not (
+            proposal.evidence_id == existing.evidence_id
+            and proposal.candidate_id == existing.candidate_id
+            and proposal.criterion_id == existing.criterion_id
+        )
+        for batch in calls
+        for proposal in batch
+    )
+
+
+def test_failed_lexical_fallback_is_retried_next_pass():
+    from models import EvidenceSignal
+    from services.decision_input_builder import (
+        LEXICAL_SIGNAL_RATIONALE,
+    )
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    state = make_state()
+    decision = state.decision_case
+
+    assert decision is not None
+
+    fallback = EvidenceSignal(
+        signal_id="sig_old",
+        evidence_id=state.evidence_items[0].evidence_id,
+        candidate_id=decision.candidates[0].candidate_id,
+        criterion_id=decision.criteria[0].criterion_id,
+        direction="neutral",
+        strength=0.5,
+        source_confidence=0.9,
+        applicability=0.8,
+        rationale=LEXICAL_SIGNAL_RATIONALE,
+    )
+
+    state.evidence_signals = [fallback]
+
+    calls = []
+
+    def fake_extract(
+        state_arg,
+        decision_arg,
+        proposals,
+    ):
+        calls.extend(proposals)
+        return proposals
+
+    agent.extract_semantic_signals = fake_extract
+
+    agent.execute_decision_intelligence(state)
+
+    assert any(
+        proposal.evidence_id == fallback.evidence_id
+        and proposal.candidate_id == fallback.candidate_id
+        and proposal.criterion_id == fallback.criterion_id
+        for proposal in calls
+    )

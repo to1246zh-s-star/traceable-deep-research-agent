@@ -56,6 +56,10 @@ from services.adaptive_research import (
 )
 from services.planner import PlanningService
 from services.semantic_signal_extractor import SemanticSignalExtractor
+from services.incremental_semantic_signals import (
+    merge_semantic_signals,
+    partition_semantic_proposals,
+)
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
 from services.summarizer import SummarizationService
@@ -211,23 +215,45 @@ class DeepResearchAgent:
         )
         state.evidence_assessments = assessments
 
+        previous_signals = list(
+            state.evidence_signals
+        )
+
         proposals = build_evidence_signals(
             state,
             decision,
         )
 
-        try:
-            semantic_signals = self.extract_semantic_signals(
-                state,
-                decision,
+        reusable_signals, pending_proposals = (
+            partition_semantic_proposals(
                 proposals,
+                previous_signals,
+            )
+        )
+
+        try:
+            newly_interpreted = (
+                self.extract_semantic_signals(
+                    state,
+                    decision,
+                    pending_proposals,
+                )
+                if pending_proposals
+                else []
             )
         except Exception:
             logger.exception(
                 "Semantic signal extraction failed; "
-                "using conservative neutral proposals"
+                "preserving reusable semantics and "
+                "conservative neutral proposals"
             )
-            semantic_signals = proposals
+            newly_interpreted = []
+
+        semantic_signals = merge_semantic_signals(
+            proposals,
+            reusable_signals,
+            newly_interpreted,
+        )
 
         state.evidence_signals = semantic_signals
 

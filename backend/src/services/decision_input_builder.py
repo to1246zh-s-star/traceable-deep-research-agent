@@ -10,6 +10,11 @@ from models import (
 from services.evidence_quality import assess_evidence
 
 
+LEXICAL_SIGNAL_RATIONALE = (
+    "Candidate and criterion terms matched retrieved evidence."
+)
+
+
 def build_evidence_assessments(
     state: SummaryState,
     decision: DecisionCase,
@@ -146,10 +151,7 @@ def build_evidence_signals(
                         ),
                         source_confidence=source_confidence,
                         applicability=applicability,
-                        rationale=(
-                            "Candidate and criterion terms "
-                            "matched retrieved evidence."
-                        ),
+                        rationale=LEXICAL_SIGNAL_RATIONALE,
                     )
                 )
 
