@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 import sys
 from contextlib import asynccontextmanager
 from threading import Lock
@@ -209,6 +210,74 @@ class ResearchReplayResponse(BaseModel):
     tasks: list[ResearchReplayTaskResponse] = Field(default_factory=list)
     timeline: list[ResearchReplayEventResponse] = Field(default_factory=list)
 
+    decision: dict[str, Any] | None = None
+
+
+def _serialize_v3_value(value: Any) -> Any:
+    """Serialize V3 decision dataclasses into JSON-safe structures."""
+
+    if value is None:
+        return None
+
+    if is_dataclass(value):
+        return {
+            key: _serialize_v3_value(item)
+            for key, item in asdict(value).items()
+        }
+
+    if isinstance(value, dict):
+        return {
+            str(key): _serialize_v3_value(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            _serialize_v3_value(item)
+            for item in value
+        ]
+
+    return value
+
+
+def _serialize_decision_intelligence(
+    state: Any,
+) -> dict[str, Any] | None:
+    """Build the persisted V3 decision-intelligence API payload."""
+
+    if state.decision_case is None:
+        return None
+
+    return {
+        "case": _serialize_v3_value(
+            state.decision_case
+        ),
+        "evaluation": _serialize_v3_value(
+            state.decision_evaluation
+        ),
+        "comparison": _serialize_v3_value(
+            state.decision_comparison
+        ),
+        "readiness": _serialize_v3_value(
+            state.decision_readiness
+        ),
+        "research_analysis": _serialize_v3_value(
+            state.research_analysis
+        ),
+        "stopping_decision": _serialize_v3_value(
+            state.stopping_decision
+        ),
+        "research_budget": _serialize_v3_value(
+            state.research_budget
+        ),
+        "research_usage": _serialize_v3_value(
+            state.research_usage
+        ),
+        "adaptive_research_state": _serialize_v3_value(
+            state.adaptive_research_state
+        ),
+    }
+
 
 def _serialize_evidence(evidence: Any) -> dict[str, Any]:
     return {
@@ -401,6 +470,9 @@ def _build_research_replay(
         "evidence_count": len(state.evidence_items),
         "tasks": tasks,
         "timeline": timeline,
+        "decision": _serialize_decision_intelligence(
+            state
+        ),
     }
 
 
