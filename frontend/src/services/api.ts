@@ -313,6 +313,123 @@ export interface ResearchReplayEventResponse {
   summary: string | null;
 }
 
+export interface DecisionCandidateResponse {
+  candidate_id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface DecisionCriterionResponse {
+  criterion_id: string;
+  name: string;
+  weight: number;
+  description?: string | null;
+}
+
+export interface DecisionCaseResponse {
+  decision_id: string;
+  question: string;
+  context?: string | null;
+  candidates: DecisionCandidateResponse[];
+  criteria?: DecisionCriterionResponse[];
+  requirements?: Array<Record<string, unknown>>;
+  constraints?: Array<Record<string, unknown>>;
+}
+
+export interface DecisionWeightedScoreResponse {
+  candidate_id: string;
+  weighted_score: number;
+  rank: number;
+}
+
+export interface DecisionComparisonResponse {
+  decision_id: string;
+  status: string;
+  ranked_candidates?: DecisionWeightedScoreResponse[];
+  candidate_scores?: DecisionWeightedScoreResponse[];
+  excluded_candidate_ids?: string[];
+  unresolved_candidate_ids?: string[];
+}
+
+export interface DecisionReadinessResponse {
+  decision_id: string;
+  overall_score: number;
+  status: string;
+  criterion_coverage: number;
+  evidence_quality: number;
+  applicability: number;
+  agreement_score: number;
+  decision_margin: number;
+  blocking_reasons?: string[];
+  research_gap_ids?: string[];
+}
+
+export interface ResearchGapResponse {
+  gap_id: string;
+  candidate_id?: string | null;
+  criterion_id?: string | null;
+  gap_type: string;
+  severity: number;
+  description: string;
+  suggested_query?: string | null;
+  status?: string;
+}
+
+export interface ResearchAnalysisResponse {
+  decision_id: string;
+  research_gaps?: ResearchGapResponse[];
+  [key: string]: unknown;
+}
+
+export interface ResearchStoppingDecisionResponse {
+  should_continue: boolean;
+  reason: string;
+  readiness_score: number;
+  readiness_status: string;
+  readiness_improvement?: number | null;
+  actionable_gap_count: number;
+  blocking_budget_limits?: string[];
+}
+
+export interface ResearchBudgetResponse {
+  max_iterations: number;
+  max_tasks: number;
+  max_searches?: number | null;
+  max_duration_seconds?: number | null;
+  max_tokens?: number | null;
+  max_cost?: number | null;
+}
+
+export interface ResearchUsageResponse {
+  iterations: number;
+  tasks: number;
+  searches: number;
+  duration_seconds: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface AdaptiveResearchStateResponse {
+  decision_id: string;
+  iteration_count: number;
+  max_iterations: number;
+  executed_gap_ids?: string[];
+  executed_queries?: string[];
+  status: string;
+}
+
+export interface DecisionIntelligenceResponse {
+  case: DecisionCaseResponse | null;
+  evaluation: Record<string, unknown> | null;
+  comparison: DecisionComparisonResponse | null;
+  readiness: DecisionReadinessResponse | null;
+  research_analysis: ResearchAnalysisResponse | null;
+  stopping_decision: ResearchStoppingDecisionResponse | null;
+  research_budget: ResearchBudgetResponse | null;
+  research_usage: ResearchUsageResponse | null;
+  adaptive_research_state: AdaptiveResearchStateResponse | null;
+}
+
 export interface ResearchReplayResponse {
   research_id: string;
   research_topic: string;
@@ -322,6 +439,7 @@ export interface ResearchReplayResponse {
   evidence_count: number;
   tasks: ResearchReplayTaskResponse[];
   timeline: ResearchReplayEventResponse[];
+  decision: DecisionIntelligenceResponse | null;
 }
 
 export function getResearchReplay(

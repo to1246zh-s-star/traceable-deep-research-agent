@@ -216,6 +216,239 @@
               </div>
             </div>
 
+            <section
+              v-if="researchReplay.decision && researchReplay.decision.case"
+              class="decision-panel"
+            >
+              <div class="decision-panel-header">
+                <div>
+                  <p class="trace-eyebrow">Decision Intelligence</p>
+                  <h4>{{ researchReplay.decision.case.question }}</h4>
+                </div>
+
+                <span
+                  v-if="researchReplay.decision.readiness"
+                  class="decision-status"
+                  :class="`decision-status-${researchReplay.decision.readiness.status.toLowerCase()}`"
+                >
+                  {{ researchReplay.decision.readiness.status }}
+                </span>
+              </div>
+
+              <div
+                v-if="researchReplay.decision.readiness"
+                class="decision-readiness-grid"
+              >
+                <div class="decision-readiness-card">
+                  <span>Readiness</span>
+                  <strong>
+                    {{
+                      Math.round(
+                        researchReplay.decision.readiness.overall_score * 100
+                      )
+                    }}%
+                  </strong>
+                </div>
+
+                <div class="decision-readiness-card">
+                  <span>Coverage</span>
+                  <strong>
+                    {{
+                      Math.round(
+                        researchReplay.decision.readiness.criterion_coverage * 100
+                      )
+                    }}%
+                  </strong>
+                </div>
+
+                <div class="decision-readiness-card">
+                  <span>Evidence Quality</span>
+                  <strong>
+                    {{
+                      Math.round(
+                        researchReplay.decision.readiness.evidence_quality * 100
+                      )
+                    }}%
+                  </strong>
+                </div>
+
+                <div class="decision-readiness-card">
+                  <span>Decision Margin</span>
+                  <strong>
+                    {{
+                      Math.round(
+                        researchReplay.decision.readiness.decision_margin * 100
+                      )
+                    }}%
+                  </strong>
+                </div>
+              </div>
+
+              <div class="decision-grid">
+                <section class="decision-section">
+                  <div class="event-section-header">
+                    <h4>Candidates</h4>
+                    <span>
+                      {{ researchReplay.decision.case.candidates.length }}
+                    </span>
+                  </div>
+
+                  <div class="decision-candidate-list">
+                    <div
+                      v-for="candidate in researchReplay.decision.case.candidates"
+                      :key="candidate.candidate_id"
+                      class="decision-candidate-card"
+                    >
+                      <strong>{{ candidate.name }}</strong>
+                      <p v-if="candidate.description">
+                        {{ candidate.description }}
+                      </p>
+                      <code>{{ candidate.candidate_id }}</code>
+                    </div>
+                  </div>
+                </section>
+
+                <section
+                  v-if="
+                    researchReplay.decision.comparison &&
+                    (
+                      researchReplay.decision.comparison.ranked_candidates?.length ||
+                      researchReplay.decision.comparison.candidate_scores?.length
+                    )
+                  "
+                  class="decision-section"
+                >
+                  <div class="event-section-header">
+                    <h4>Ranking</h4>
+                    <span>
+                      {{ researchReplay.decision.comparison.status }}
+                    </span>
+                  </div>
+
+                  <div class="decision-ranking-list">
+                    <div
+                      v-for="score in (
+                        researchReplay.decision.comparison.ranked_candidates ||
+                        researchReplay.decision.comparison.candidate_scores ||
+                        []
+                      )"
+                      :key="score.candidate_id"
+                      class="decision-ranking-row"
+                    >
+                      <span>#{{ score.rank }}</span>
+                      <strong>
+                        {{
+                          researchReplay.decision.case.candidates.find(
+                            candidate =>
+                              candidate.candidate_id === score.candidate_id
+                          )?.name || score.candidate_id
+                        }}
+                      </strong>
+                      <code>{{ score.weighted_score.toFixed(2) }}</code>
+                    </div>
+                  </div>
+                </section>
+
+                <section
+                  v-if="
+                    researchReplay.decision.research_analysis?.research_gaps?.length
+                  "
+                  class="decision-section"
+                >
+                  <div class="event-section-header">
+                    <h4>Research Gaps</h4>
+                    <span>
+                      {{
+                        researchReplay.decision.research_analysis.research_gaps.length
+                      }}
+                    </span>
+                  </div>
+
+                  <div class="decision-gap-list">
+                    <div
+                      v-for="gap in researchReplay.decision.research_analysis.research_gaps"
+                      :key="gap.gap_id"
+                      class="decision-gap-card"
+                    >
+                      <div class="decision-gap-header">
+                        <strong>{{ gap.gap_type }}</strong>
+                        <span>
+                          severity {{ Math.round(gap.severity * 100) }}%
+                        </span>
+                      </div>
+
+                      <p>{{ gap.description }}</p>
+
+                      <code v-if="gap.suggested_query">
+                        {{ gap.suggested_query }}
+                      </code>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div
+                v-if="researchReplay.decision.stopping_decision"
+                class="decision-stop-row"
+              >
+                <div>
+                  <span>Research Status</span>
+                  <strong>
+                    {{
+                      researchReplay.decision.stopping_decision.should_continue
+                        ? "Continue Research"
+                        : "Stop Research"
+                    }}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Reason</span>
+                  <strong>
+                    {{ researchReplay.decision.stopping_decision.reason }}
+                  </strong>
+                </div>
+
+                <div
+                  v-if="researchReplay.decision.research_usage"
+                >
+                  <span>Adaptive Usage</span>
+                  <strong>
+                    {{ researchReplay.decision.research_usage.iterations }}
+                    iterations /
+                    {{ researchReplay.decision.research_usage.tasks }}
+                    tasks
+                  </strong>
+                </div>
+
+                <div
+                  v-if="researchReplay.decision.adaptive_research_state"
+                >
+                  <span>Adaptive State</span>
+                  <strong>
+                    {{ researchReplay.decision.adaptive_research_state.status }}
+                  </strong>
+                </div>
+              </div>
+
+              <div
+                v-if="
+                  researchReplay.decision.readiness?.blocking_reasons?.length
+                "
+                class="decision-blockers"
+              >
+                <strong>Blocking reasons</strong>
+                <ul>
+                  <li
+                    v-for="reason in researchReplay.decision.readiness.blocking_reasons"
+                    :key="reason"
+                  >
+                    {{ reason }}
+                  </li>
+                </ul>
+              </div>
+            </section>
+
             <div class="replay-layout">
               <section class="replay-task-section">
                 <div class="event-section-header">
@@ -2407,6 +2640,200 @@ select:focus {
   align-items: start;
 }
 
+.decision-panel {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.decision-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.decision-panel-header h4 {
+  margin: 4px 0 0;
+  color: #1e293b;
+  font-size: 17px;
+}
+
+.decision-status {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4338ca;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.decision-status-ready {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.decision-status-tentative {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.decision-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.decision-readiness-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.decision-readiness-card span,
+.decision-stop-row span {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.decision-readiness-card strong {
+  color: #1e293b;
+  font-size: 18px;
+}
+
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.decision-section {
+  min-width: 0;
+}
+
+.decision-candidate-list,
+.decision-ranking-list,
+.decision-gap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.decision-candidate-card,
+.decision-gap-card,
+.decision-ranking-row {
+  padding: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.decision-candidate-card strong {
+  display: block;
+  color: #1e293b;
+  font-size: 12px;
+}
+
+.decision-candidate-card p,
+.decision-gap-card p {
+  margin: 5px 0;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.decision-candidate-card code,
+.decision-gap-card code,
+.decision-ranking-row code {
+  color: #64748b;
+  font-size: 9px;
+}
+
+.decision-ranking-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.decision-ranking-row > span {
+  color: #6366f1;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.decision-ranking-row > strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.decision-gap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.decision-gap-header strong {
+  color: #334155;
+  font-size: 10px;
+}
+
+.decision-gap-header span {
+  color: #94a3b8;
+  font-size: 9px;
+}
+
+.decision-stop-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.decision-stop-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.decision-stop-row strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.decision-blockers {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.decision-blockers > strong {
+  color: #92400e;
+  font-size: 11px;
+}
+
+.decision-blockers ul {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  color: #78350f;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
 @media (max-width: 960px) {
   .tasks-section {
     grid-template-columns: 1fr;
@@ -4327,6 +4754,15 @@ select:focus {
   }
 
   .replay-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-readiness-grid,
+  .decision-stop-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .decision-grid {
     grid-template-columns: 1fr;
   }
 }
