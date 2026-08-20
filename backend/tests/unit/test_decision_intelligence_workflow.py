@@ -1,5 +1,6 @@
 from agent import DeepResearchAgent
 from models import (
+    Constraint,
     Candidate,
     DecisionCase,
     DecisionCriterion,
@@ -252,3 +253,251 @@ def test_constraints_remain_unresolved_without_results():
         state.decision_comparison.status
         == "incomplete"
     )
+
+
+def test_decision_intelligence_auto_resolves_constraints(monkeypatch):
+    agent = object.__new__(DeepResearchAgent)
+
+    decision = DecisionCase(
+        decision_id="dec_constraint_auto",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        constraints=[
+            Constraint(
+                constraint_id="con_required",
+                text="Must satisfy requirement",
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B",
+        decision_case=decision,
+    )
+
+    agent.constraint_resolver = type(
+        "Resolver",
+        (),
+        {
+            "resolve": lambda self, state, decision: {
+                "cand_a": {
+                    "con_required": True,
+                },
+                "cand_b": {
+                    "con_required": False,
+                },
+            }
+        },
+    )()
+
+    monkeypatch.setattr(
+        "agent.build_evidence_assessments",
+        lambda state, decision: [],
+    )
+
+    monkeypatch.setattr(
+        "agent.build_evidence_signals",
+        lambda state, decision: [],
+    )
+
+    agent.extract_semantic_signals = (
+        lambda state, decision, proposals: proposals
+    )
+
+    captured = {}
+
+    def fake_pipeline(
+        state,
+        decision,
+        *,
+        constraint_results=None,
+        evidence_signals=None,
+        evidence_assessments=None,
+        research_budget=None,
+        research_usage=None,
+    ):
+        captured["constraint_results"] = constraint_results
+        return state
+
+    agent.execute_decision_pipeline = fake_pipeline
+
+    result = agent.execute_decision_intelligence(state)
+
+    assert result is state
+    assert captured["constraint_results"] == {
+        "cand_a": {
+            "con_required": True,
+        },
+        "cand_b": {
+            "con_required": False,
+        },
+    }
+
+
+def test_decision_intelligence_constraint_resolution_failure_is_safe(
+    monkeypatch,
+):
+    agent = object.__new__(DeepResearchAgent)
+
+    decision = DecisionCase(
+        decision_id="dec_constraint_fail",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        constraints=[
+            Constraint(
+                constraint_id="con_required",
+                text="Must satisfy requirement",
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B",
+        decision_case=decision,
+    )
+
+    class FailingResolver:
+        def resolve(self, state, decision):
+            raise RuntimeError("resolver failure")
+
+    agent.constraint_resolver = FailingResolver()
+
+    monkeypatch.setattr(
+        "agent.build_evidence_assessments",
+        lambda state, decision: [],
+    )
+
+    monkeypatch.setattr(
+        "agent.build_evidence_signals",
+        lambda state, decision: [],
+    )
+
+    agent.extract_semantic_signals = (
+        lambda state, decision, proposals: proposals
+    )
+
+    captured = {}
+
+    def fake_pipeline(
+        state,
+        decision,
+        *,
+        constraint_results=None,
+        evidence_signals=None,
+        evidence_assessments=None,
+        research_budget=None,
+        research_usage=None,
+    ):
+        captured["constraint_results"] = constraint_results
+        return state
+
+    agent.execute_decision_pipeline = fake_pipeline
+
+    result = agent.execute_decision_intelligence(state)
+
+    assert result is state
+    assert captured["constraint_results"] == {}
+
+
+def test_explicit_constraint_results_skip_resolver(monkeypatch):
+    agent = object.__new__(DeepResearchAgent)
+
+    decision = DecisionCase(
+        decision_id="dec_constraint_explicit",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        constraints=[
+            Constraint(
+                constraint_id="con_required",
+                text="Must satisfy requirement",
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B",
+        decision_case=decision,
+    )
+
+    class ResolverMustNotRun:
+        def resolve(self, state, decision):
+            raise AssertionError(
+                "constraint resolver should not be called"
+            )
+
+    agent.constraint_resolver = ResolverMustNotRun()
+
+    monkeypatch.setattr(
+        "agent.build_evidence_assessments",
+        lambda state, decision: [],
+    )
+
+    monkeypatch.setattr(
+        "agent.build_evidence_signals",
+        lambda state, decision: [],
+    )
+
+    agent.extract_semantic_signals = (
+        lambda state, decision, proposals: proposals
+    )
+
+    explicit_results = {
+        "cand_a": {
+            "con_required": True,
+        },
+        "cand_b": {
+            "con_required": True,
+        },
+    }
+
+    captured = {}
+
+    def fake_pipeline(
+        state,
+        decision,
+        *,
+        constraint_results=None,
+        evidence_signals=None,
+        evidence_assessments=None,
+        research_budget=None,
+        research_usage=None,
+    ):
+        captured["constraint_results"] = constraint_results
+        return state
+
+    agent.execute_decision_pipeline = fake_pipeline
+
+    result = agent.execute_decision_intelligence(
+        state,
+        constraint_results=explicit_results,
+    )
+
+    assert result is state
+    assert captured["constraint_results"] == explicit_results

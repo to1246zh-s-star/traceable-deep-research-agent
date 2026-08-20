@@ -38,6 +38,7 @@ from models import (
     SummaryStateOutput,
     TodoItem,
 )
+from services.constraint_resolver import ConstraintResolver
 from services.decision_case_extractor import DecisionCaseExtractor
 from services.decision_input_builder import (
     build_evidence_assessments,
@@ -124,6 +125,16 @@ class DeepResearchAgent:
         )
 
         self.planner = PlanningService(self.todo_agent, self.config)
+        self.constraint_resolution_agent = self._create_tool_aware_agent(
+            name="硬约束证据判定专家",
+            system_prompt=(
+                "Evaluate whether supplied evidence explicitly establishes "
+                "that a technical candidate satisfies or violates a hard "
+                "constraint. Be conservative, never infer missing facts, "
+                "and return structured JSON only."
+            ),
+        )
+
         self.summarizer = SummarizationService(self._summarizer_factory, self.config)
         self.reporting = ReportingService(self.report_agent, self.config)
         self.decision_case_extractor = DecisionCaseExtractor(
@@ -132,6 +143,11 @@ class DeepResearchAgent:
         )
         self.semantic_signal_extractor = SemanticSignalExtractor(
             self.semantic_signal_agent,
+            self.config,
+        )
+
+        self.constraint_resolver = ConstraintResolver(
+            self.constraint_resolution_agent,
             self.config,
         )
         self._last_search_notices: list[str] = []
@@ -213,6 +229,19 @@ class DeepResearchAgent:
             semantic_signals = proposals
 
         state.evidence_signals = semantic_signals
+
+        if constraint_results is None and decision.constraints:
+            try:
+                constraint_results = self.constraint_resolver.resolve(
+                    state,
+                    decision,
+                )
+            except Exception:
+                logger.exception(
+                    "Constraint resolution failed; "
+                    "preserving unresolved constraints"
+                )
+                constraint_results = {}
 
         return self.execute_decision_pipeline(
             state,
