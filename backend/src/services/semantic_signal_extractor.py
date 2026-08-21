@@ -105,6 +105,10 @@ class SemanticSignalExtractor:
         self.last_parse_status = "unknown"
         self.retry_count = 0
 
+        # Cumulative actual provider invocations for observability.
+        # Retries count because they consume real LLM quota.
+        self.llm_call_count = 0
+
     def extract(
         self,
         state: SummaryState,
@@ -297,6 +301,7 @@ class SemanticSignalExtractor:
     ) -> list[dict[str, Any]] | None:
         """Invoke semantic agent and validate one batched JSON response."""
 
+        self.llm_call_count += 1
         response = self._agent.run(prompt)
         self._agent.clear_history()
 

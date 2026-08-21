@@ -69,6 +69,8 @@ def test_replay_exposes_decision_intelligence_state():
         research_usage=ResearchUsage(
             iterations=1,
             tasks=2,
+            semantic_llm_calls=3,
+            constraint_llm_calls=2,
         ),
         adaptive_research_state=AdaptiveResearchState(
             decision_id="dec_api",
@@ -119,6 +121,14 @@ def test_replay_exposes_decision_intelligence_state():
 
     assert (
         decision_payload["research_usage"]["tasks"]
+        == 2
+    )
+    assert (
+        decision_payload["research_usage"]["semantic_llm_calls"]
+        == 3
+    )
+    assert (
+        decision_payload["research_usage"]["constraint_llm_calls"]
         == 2
     )
 

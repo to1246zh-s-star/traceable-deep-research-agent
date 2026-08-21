@@ -523,6 +523,11 @@ class ResearchUsage:
     tokens: int = field(default=0)
     cost: float = field(default=0.0)
 
+    # Actual provider invocations performed by V3 decision intelligence.
+    # Retries are counted because they consume real provider quota.
+    semantic_llm_calls: int = field(default=0)
+    constraint_llm_calls: int = field(default=0)
+
 
 @dataclass(kw_only=True)
 class ReadinessSnapshot:

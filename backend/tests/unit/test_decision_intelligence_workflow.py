@@ -632,3 +632,137 @@ def test_failed_lexical_fallback_is_retried_next_pass():
         and proposal.criterion_id == fallback.criterion_id
         for proposal in calls
     )
+
+
+
+class UsageCounter:
+    def __init__(self, llm_call_count=0):
+        self.llm_call_count = llm_call_count
+
+
+def test_decision_intelligence_records_semantic_llm_usage():
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    state = make_state()
+
+    # Replace with an explicitly observable semantic service.
+    agent.semantic_signal_extractor.llm_call_count = 4
+
+    # Constraint counting is irrelevant in this test.
+    agent.constraint_resolver = UsageCounter()
+
+    def fake_extract(
+        state_arg,
+        decision_arg,
+        proposals,
+    ):
+        agent.semantic_signal_extractor.llm_call_count += 2
+        return proposals
+
+    agent.extract_semantic_signals = fake_extract
+
+    agent.execute_decision_intelligence(state)
+
+    assert state.research_usage is not None
+    assert state.research_usage.semantic_llm_calls == 2
+    assert state.research_usage.constraint_llm_calls == 0
+
+
+def test_decision_intelligence_records_constraint_llm_usage():
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    state = make_state()
+
+    from models import Constraint
+
+    state.decision_case.constraints = [
+        Constraint(
+            constraint_id="con_required",
+            text="Must satisfy requirement",
+        )
+    ]
+
+    class CountingResolver:
+        def __init__(self):
+            self.llm_call_count = 3
+
+        def resolve(
+            self,
+            state_arg,
+            decision_arg,
+        ):
+            self.llm_call_count += 1
+            return {}
+
+    agent.constraint_resolver = CountingResolver()
+
+    agent.execute_decision_intelligence(state)
+
+    assert state.research_usage is not None
+    assert state.research_usage.constraint_llm_calls == 1
+
+
+def test_decision_usage_accumulates_across_passes():
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    state = make_state()
+
+    from models import Constraint
+
+    state.decision_case.constraints = [
+        Constraint(
+            constraint_id="con_required",
+            text="Must satisfy requirement",
+        )
+    ]
+
+    semantic_deltas = [2, 0]
+    constraint_deltas = [2, 0]
+
+    agent.semantic_signal_extractor.llm_call_count = 0
+
+    class CountingResolver:
+        def __init__(self):
+            self.llm_call_count = 0
+
+        def resolve(
+            self,
+            state_arg,
+            decision_arg,
+        ):
+            delta = constraint_deltas.pop(0)
+            self.llm_call_count += delta
+            return {}
+
+    agent.constraint_resolver = CountingResolver()
+
+    def fake_extract(
+        state_arg,
+        decision_arg,
+        proposals,
+    ):
+        delta = semantic_deltas.pop(0)
+        agent.semantic_signal_extractor.llm_call_count += delta
+        return proposals
+
+    agent.extract_semantic_signals = fake_extract
+
+    agent.execute_decision_intelligence(state)
+    agent.execute_decision_intelligence(state)
+
+    assert state.research_usage is not None
+
+    assert (
+        state.research_usage.semantic_llm_calls
+        == 2
+    )
+    assert (
+        state.research_usage.constraint_llm_calls
+        == 2
+    )

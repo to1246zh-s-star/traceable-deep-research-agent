@@ -93,6 +93,10 @@ class ConstraintResolver:
         self.last_parse_status = "unknown"
         self.retry_count = 0
 
+        # Cumulative actual provider invocations for observability.
+        # Cache hits do not increment this counter; retries do.
+        self.llm_call_count = 0
+
         # Runtime-only cache for repeated adaptive decision passes.
         #
         # The cache intentionally lives on the resolver instance rather than
@@ -283,6 +287,7 @@ class ConstraintResolver:
         *,
         allowed_constraint_ids: set[str],
     ) -> list[dict[str, Any]] | None:
+        self.llm_call_count += 1
         response = self._agent.run(prompt)
         self._agent.clear_history()
 

@@ -422,6 +422,18 @@
                 </div>
 
                 <div
+                  v-if="researchReplay.decision.research_usage"
+                >
+                  <span>Decision LLM Usage</span>
+                  <strong>
+                    {{ researchReplay.decision.research_usage.semantic_llm_calls }}
+                    semantic /
+                    {{ researchReplay.decision.research_usage.constraint_llm_calls }}
+                    constraint calls
+                  </strong>
+                </div>
+
+                <div
                   v-if="researchReplay.decision.adaptive_research_state"
                 >
                   <span>Adaptive State</span>

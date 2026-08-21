@@ -209,6 +209,33 @@ class DeepResearchAgent:
         if decision is None:
             return state
 
+        usage = (
+            research_usage
+            or state.research_usage
+            or ResearchUsage()
+        )
+        state.research_usage = usage
+
+        semantic_calls_before = getattr(
+            getattr(
+                self,
+                "semantic_signal_extractor",
+                None,
+            ),
+            "llm_call_count",
+            0,
+        )
+
+        constraint_calls_before = getattr(
+            getattr(
+                self,
+                "constraint_resolver",
+                None,
+            ),
+            "llm_call_count",
+            0,
+        )
+
         assessments = build_evidence_assessments(
             state,
             decision,
@@ -270,6 +297,38 @@ class DeepResearchAgent:
                 )
                 constraint_results = {}
 
+        semantic_calls_after = getattr(
+            getattr(
+                self,
+                "semantic_signal_extractor",
+                None,
+            ),
+            "llm_call_count",
+            semantic_calls_before,
+        )
+
+        constraint_calls_after = getattr(
+            getattr(
+                self,
+                "constraint_resolver",
+                None,
+            ),
+            "llm_call_count",
+            constraint_calls_before,
+        )
+
+        usage.semantic_llm_calls += max(
+            0,
+            semantic_calls_after
+            - semantic_calls_before,
+        )
+
+        usage.constraint_llm_calls += max(
+            0,
+            constraint_calls_after
+            - constraint_calls_before,
+        )
+
         return self.execute_decision_pipeline(
             state,
             decision,
@@ -277,7 +336,7 @@ class DeepResearchAgent:
             evidence_signals=semantic_signals,
             evidence_assessments=assessments,
             research_budget=research_budget,
-            research_usage=research_usage,
+            research_usage=usage,
         )
 
     def execute_decision_pipeline(

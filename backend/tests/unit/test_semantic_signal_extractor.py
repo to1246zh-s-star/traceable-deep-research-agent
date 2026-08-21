@@ -531,3 +531,32 @@ def test_duplicate_signal_ids_are_rejected():
 
     # Empty repaired batch means missing result -> preserve neutral.
     assert signals == [proposal]
+
+
+def test_llm_call_count_tracks_actual_provider_calls():
+    state, decision, proposal = make_inputs()
+
+    agent = StubAgent([
+        '{"results":',
+        batch_response(
+            direction="positive",
+            strength=0.8,
+        ),
+    ])
+
+    extractor = SemanticSignalExtractor(
+        agent,
+        DummyConfig(),
+    )
+
+    assert extractor.llm_call_count == 0
+
+    extractor.extract(
+        state,
+        decision,
+        [proposal],
+    )
+
+    # Initial call + one repair retry.
+    assert extractor.llm_call_count == 2
+    assert agent.calls == 2

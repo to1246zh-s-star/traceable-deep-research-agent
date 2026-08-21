@@ -842,3 +842,58 @@ def test_failed_resolution_is_not_cached():
             "con_linux": True,
         }
     }
+
+
+def test_llm_call_count_tracks_calls_and_cache_hits():
+    decision = make_decision()
+
+    # Keep one candidate for exact accounting.
+    decision.candidates = [
+        decision.candidates[0]
+    ]
+
+    agent = StubAgent([
+        """
+        {
+          "results": [
+            {
+              "constraint_id": "con_self_host",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            },
+            {
+              "constraint_id": "con_linux",
+              "status": "satisfied",
+              "strength": 0.9,
+              "rationale": "Supported."
+            }
+          ]
+        }
+        """
+    ])
+
+    resolver = ConstraintResolver(
+        agent,
+        DummyConfig(),
+    )
+
+    state = make_state()
+
+    assert resolver.llm_call_count == 0
+
+    resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert resolver.llm_call_count == 1
+
+    # Identical second pass is served from candidate cache.
+    resolver.resolve(
+        state,
+        decision,
+    )
+
+    assert resolver.llm_call_count == 1
+    assert agent.calls == 1

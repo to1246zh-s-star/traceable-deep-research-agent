@@ -407,6 +407,8 @@ export interface ResearchUsageResponse {
   duration_seconds: number;
   tokens: number;
   cost: number;
+  semantic_llm_calls: number;
+  constraint_llm_calls: number;
 }
 
 export interface AdaptiveResearchStateResponse {
