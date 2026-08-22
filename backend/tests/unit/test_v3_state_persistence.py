@@ -8,9 +8,11 @@ from models import (
     ReadinessSnapshot,
     ResearchBudget,
     ResearchStoppingDecision,
+    IntegrationAssessment,
     ResearchUsage,
     SensitivityResult,
     SummaryState,
+    TechnicalContext,
 )
 from services.research_store import SQLiteResearchStore
 
@@ -75,6 +77,32 @@ def make_v3_state() -> SummaryState:
     return SummaryState(
         research_topic="Qdrant vs Milvus",
         decision_case=decision,
+        technical_context=TechnicalContext(
+            existing_stack=[
+                "Python",
+                "FastAPI",
+            ],
+            deployment_environment=[
+                "Docker-only",
+            ],
+            team_capabilities=[
+                "small backend team",
+            ],
+        ),
+        integration_assessments=[
+            IntegrationAssessment(
+                decision_id=decision.decision_id,
+                candidate_id="cand_qdrant",
+                integration_complexity="LOW",
+                migration_complexity="LOW",
+                operational_change="LOW",
+                infrastructure_change="LOW",
+                evidence_ids=[
+                    "evi_qdrant_architecture",
+                ],
+                rationale="Fits the current lightweight stack.",
+            )
+        ],
         decision_evaluation=evaluation,
         decision_sensitivity=[
             SensitivityResult(
@@ -188,6 +216,8 @@ def test_existing_v2_state_loads_with_empty_v3_defaults(tmp_path):
 
     assert restored is not None
     assert restored.decision_case is None
+    assert restored.technical_context is None
+    assert restored.integration_assessments == []
     assert restored.decision_evaluation is None
     assert restored.decision_comparison is None
     assert restored.decision_sensitivity == []
@@ -257,3 +287,39 @@ def test_sqlite_persists_decision_sensitivity(tmp_path):
     assert sensitivity.recommendation_changes is True
     assert sensitivity.switch_threshold == 0.38
     assert sensitivity.competing_candidate_id == "cand_milvus"
+
+
+def test_sqlite_persists_architecture_context(tmp_path):
+    db_path = tmp_path / "architecture_context.db"
+
+    store = SQLiteResearchStore(db_path)
+
+    original = make_v3_state()
+
+    research_id = store.save(original)
+    restored = SQLiteResearchStore(db_path).get(research_id)
+
+    assert restored is not None
+
+    assert restored.technical_context is not None
+    assert restored.technical_context.existing_stack == [
+        "Python",
+        "FastAPI",
+    ]
+    assert restored.technical_context.deployment_environment == [
+        "Docker-only",
+    ]
+
+    assert len(restored.integration_assessments) == 1
+
+    assessment = restored.integration_assessments[0]
+
+    assert isinstance(
+        assessment,
+        IntegrationAssessment,
+    )
+    assert assessment.candidate_id == "cand_qdrant"
+    assert assessment.integration_complexity == "LOW"
+    assert assessment.evidence_ids == [
+        "evi_qdrant_architecture",
+    ]

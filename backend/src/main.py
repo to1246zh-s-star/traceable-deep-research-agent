@@ -256,6 +256,12 @@ def _serialize_decision_intelligence(
         "case": _serialize_v3_value(
             state.decision_case
         ),
+        "technical_context": _serialize_v3_value(
+            state.technical_context
+        ),
+        "integration_assessments": _serialize_v3_value(
+            state.integration_assessments
+        ),
         "evaluation": _serialize_v3_value(
             state.decision_evaluation
         ),

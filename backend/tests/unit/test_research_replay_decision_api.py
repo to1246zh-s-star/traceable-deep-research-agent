@@ -4,11 +4,13 @@ from models import (
     Candidate,
     DecisionCase,
     DecisionReadiness,
+    IntegrationAssessment,
     ResearchBudget,
     ResearchStoppingDecision,
     ResearchUsage,
     SensitivityResult,
     SummaryState,
+    TechnicalContext,
 )
 
 
@@ -278,3 +280,108 @@ def test_replay_uses_empty_sensitivity_list_by_default():
 
     assert payload["decision"] is not None
     assert payload["decision"]["sensitivity"] == []
+
+
+def test_replay_exposes_architecture_context():
+    decision = DecisionCase(
+        decision_id="dec_architecture_api",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Architecture-aware choice",
+        decision_case=decision,
+        technical_context=TechnicalContext(
+            existing_stack=[
+                "Python",
+                "FastAPI",
+            ],
+            deployment_environment=[
+                "Docker-only",
+            ],
+            team_capabilities=[
+                "limited DevOps capacity",
+            ],
+        ),
+        integration_assessments=[
+            IntegrationAssessment(
+                decision_id=decision.decision_id,
+                candidate_id="cand_b",
+                integration_complexity="MEDIUM",
+                migration_complexity="MEDIUM",
+                operational_change="HIGH",
+                infrastructure_change="MEDIUM",
+                required_new_dependencies=[
+                    "coordination service",
+                ],
+                team_skill_gaps=[
+                    "distributed operations",
+                ],
+                evidence_ids=[
+                    "evi_architecture",
+                ],
+            )
+        ],
+    )
+
+    payload = _build_research_replay(
+        "research_architecture",
+        state,
+    )
+
+    decision_payload = payload["decision"]
+
+    assert decision_payload is not None
+
+    context = decision_payload["technical_context"]
+
+    assert context["existing_stack"] == [
+        "Python",
+        "FastAPI",
+    ]
+    assert context["deployment_environment"] == [
+        "Docker-only",
+    ]
+
+    assessments = decision_payload[
+        "integration_assessments"
+    ]
+
+    assert len(assessments) == 1
+    assert assessments[0]["candidate_id"] == "cand_b"
+    assert (
+        assessments[0]["integration_complexity"]
+        == "MEDIUM"
+    )
+    assert assessments[0]["operational_change"] == "HIGH"
+
+
+def test_replay_uses_empty_architecture_defaults():
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_empty_architecture",
+            question="Choose A or B",
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_empty_architecture",
+        state,
+    )
+
+    decision_payload = payload["decision"]
+
+    assert decision_payload is not None
+    assert decision_payload["technical_context"] is None
+    assert decision_payload["integration_assessments"] == []

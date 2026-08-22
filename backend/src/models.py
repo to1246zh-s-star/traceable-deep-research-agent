@@ -212,6 +212,47 @@ class DecisionCase:
 
 
 @dataclass(kw_only=True)
+class TechnicalContext:
+    """Technical environment and constraints surrounding a decision."""
+
+    existing_stack: list[str] = field(default_factory=list)
+    deployment_environment: list[str] = field(default_factory=list)
+    infrastructure: list[str] = field(default_factory=list)
+    team_capabilities: list[str] = field(default_factory=list)
+
+    scale_requirements: list[str] = field(default_factory=list)
+    performance_requirements: list[str] = field(default_factory=list)
+    reliability_requirements: list[str] = field(default_factory=list)
+
+    integration_requirements: list[str] = field(default_factory=list)
+    operational_constraints: list[str] = field(default_factory=list)
+    security_constraints: list[str] = field(default_factory=list)
+    compliance_constraints: list[str] = field(default_factory=list)
+    migration_constraints: list[str] = field(default_factory=list)
+    budget_constraints: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class IntegrationAssessment:
+    """Architecture-fit assessment for one candidate."""
+
+    decision_id: str
+    candidate_id: str
+
+    integration_complexity: str = field(default="UNKNOWN")
+    migration_complexity: str = field(default="UNKNOWN")
+    operational_change: str = field(default="UNKNOWN")
+    infrastructure_change: str = field(default="UNKNOWN")
+
+    required_new_dependencies: list[str] = field(default_factory=list)
+    affected_components: list[str] = field(default_factory=list)
+    team_skill_gaps: list[str] = field(default_factory=list)
+
+    evidence_ids: list[str] = field(default_factory=list)
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
 class CandidateDecisionResult:
     """Deterministic hard-constraint evaluation for one candidate."""
 
@@ -641,6 +682,11 @@ class SummaryState:
 
     # V3 Technical Decision Intelligence state
     decision_case: Optional[DecisionCase] = field(default=None)
+    technical_context: Optional[TechnicalContext] = field(default=None)
+    integration_assessments: list[IntegrationAssessment] = field(
+        default_factory=list
+    )
+
     decision_evaluation: Optional[DecisionEvaluation] = field(default=None)
     decision_comparison: Optional[DecisionComparison] = field(default=None)
     decision_sensitivity: list[SensitivityResult] = field(default_factory=list)

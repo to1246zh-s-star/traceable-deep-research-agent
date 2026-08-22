@@ -6,10 +6,12 @@ from models import (
     DecisionComparison,
     EvidenceAssessment,
     EvidenceSignal,
+    IntegrationAssessment,
     ReadinessSnapshot,
     ResearchBudget,
     ResearchUsage,
     SummaryState,
+    TechnicalContext,
 )
 from services.decision_comparison import compare_candidates
 from services.decision_evaluator import evaluate_decision_case
@@ -29,6 +31,8 @@ def run_decision_pipeline(
     decision: DecisionCase,
     *,
     constraint_results: dict[str, dict[str, bool]] | None = None,
+    technical_context: TechnicalContext | None = None,
+    integration_assessments: list[IntegrationAssessment] | None = None,
     criterion_scores: list[CandidateCriterionScore] | None = None,
     evidence_signals: list[EvidenceSignal] | None = None,
     evidence_assessments: list[EvidenceAssessment] | None = None,
@@ -131,6 +135,15 @@ def run_decision_pipeline(
     )
 
     state.decision_case = decision
+
+    if technical_context is not None:
+        state.technical_context = technical_context
+
+    if integration_assessments is not None:
+        state.integration_assessments = list(
+            integration_assessments
+        )
+
     state.decision_evaluation = evaluation
     state.decision_comparison = comparison
     state.decision_sensitivity = sensitivity

@@ -7,8 +7,10 @@ from models import (
     EvidenceApplicability,
     EvidenceQuality,
     EvidenceSignal,
+    IntegrationAssessment,
     SourceQuality,
     SummaryState,
+    TechnicalContext,
 )
 from services.decision_pipeline import run_decision_pipeline
 
@@ -344,3 +346,128 @@ def test_incomplete_pipeline_clears_sensitivity_results():
     assert state.decision_comparison is not None
     assert state.decision_comparison.status == "incomplete"
     assert state.decision_sensitivity == []
+
+
+def test_decision_pipeline_stores_architecture_context():
+    decision = DecisionCase(
+        decision_id="dec_architecture",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+    )
+
+    context = TechnicalContext(
+        existing_stack=[
+            "Python",
+            "FastAPI",
+        ],
+        deployment_environment=[
+            "Docker-only",
+        ],
+        team_capabilities=[
+            "limited DevOps capacity",
+        ],
+    )
+
+    assessments = [
+        IntegrationAssessment(
+            decision_id=decision.decision_id,
+            candidate_id="cand_a",
+            integration_complexity="LOW",
+            migration_complexity="LOW",
+            operational_change="LOW",
+            infrastructure_change="LOW",
+            rationale="Fits the existing deployment model.",
+        ),
+        IntegrationAssessment(
+            decision_id=decision.decision_id,
+            candidate_id="cand_b",
+            integration_complexity="MEDIUM",
+            migration_complexity="MEDIUM",
+            operational_change="HIGH",
+            infrastructure_change="MEDIUM",
+            required_new_dependencies=[
+                "additional coordination service",
+            ],
+            team_skill_gaps=[
+                "distributed operations",
+            ],
+        ),
+    ]
+
+    state = SummaryState(
+        research_topic="Architecture-aware choice",
+    )
+
+    result = run_decision_pipeline(
+        state,
+        decision,
+        technical_context=context,
+        integration_assessments=assessments,
+    )
+
+    assert result is state
+    assert state.technical_context is context
+
+    assert len(state.integration_assessments) == 2
+
+    assert (
+        state.integration_assessments[1].candidate_id
+        == "cand_b"
+    )
+    assert (
+        state.integration_assessments[1].operational_change
+        == "HIGH"
+    )
+
+
+def test_decision_pipeline_preserves_existing_architecture_context():
+    original_context = TechnicalContext(
+        existing_stack=[
+            "Python",
+            "FastAPI",
+        ],
+    )
+
+    original_assessments = [
+        IntegrationAssessment(
+            decision_id="dec_preserve_context",
+            candidate_id="cand_a",
+            integration_complexity="LOW",
+        )
+    ]
+
+    state = SummaryState(
+        research_topic="Architecture-aware choice",
+        technical_context=original_context,
+        integration_assessments=original_assessments,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_preserve_context",
+        question="Choose A",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            )
+        ],
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+    )
+
+    assert state.technical_context is original_context
+    assert state.integration_assessments == original_assessments
+
+

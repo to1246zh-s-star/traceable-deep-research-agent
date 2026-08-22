@@ -5,8 +5,10 @@ from models import (
     Constraint,
     DecisionCase,
     DecisionCriterion,
+    IntegrationAssessment,
     Requirement,
     SensitivityResult,
+    TechnicalContext,
 )
 
 
@@ -179,3 +181,119 @@ def test_sensitivity_result_serializes_with_asdict():
         "competing_candidate_id": "cand_milvus",
         "score_margin_after": -0.1,
     }
+
+
+def test_technical_context_uses_empty_collection_defaults():
+    context = TechnicalContext()
+
+    assert context.existing_stack == []
+    assert context.deployment_environment == []
+    assert context.infrastructure == []
+    assert context.team_capabilities == []
+    assert context.scale_requirements == []
+    assert context.performance_requirements == []
+    assert context.reliability_requirements == []
+    assert context.integration_requirements == []
+    assert context.operational_constraints == []
+    assert context.security_constraints == []
+    assert context.compliance_constraints == []
+    assert context.migration_constraints == []
+    assert context.budget_constraints == []
+
+
+def test_technical_context_serializes_with_asdict():
+    context = TechnicalContext(
+        existing_stack=[
+            "Python",
+            "FastAPI",
+            "PostgreSQL",
+        ],
+        deployment_environment=[
+            "self-hosted",
+            "Docker-only",
+        ],
+        team_capabilities=[
+            "small backend team",
+        ],
+        scale_requirements=[
+            "5M vectors",
+            "30 QPS",
+        ],
+    )
+
+    serialized = asdict(context)
+
+    assert serialized["existing_stack"] == [
+        "Python",
+        "FastAPI",
+        "PostgreSQL",
+    ]
+    assert serialized["deployment_environment"] == [
+        "self-hosted",
+        "Docker-only",
+    ]
+    assert serialized["team_capabilities"] == [
+        "small backend team",
+    ]
+    assert serialized["scale_requirements"] == [
+        "5M vectors",
+        "30 QPS",
+    ]
+
+
+def test_integration_assessment_defaults_to_unknown():
+    assessment = IntegrationAssessment(
+        decision_id="dec_test",
+        candidate_id="cand_milvus",
+    )
+
+    assert assessment.integration_complexity == "UNKNOWN"
+    assert assessment.migration_complexity == "UNKNOWN"
+    assert assessment.operational_change == "UNKNOWN"
+    assert assessment.infrastructure_change == "UNKNOWN"
+
+    assert assessment.required_new_dependencies == []
+    assert assessment.affected_components == []
+    assert assessment.team_skill_gaps == []
+    assert assessment.evidence_ids == []
+    assert assessment.rationale is None
+
+
+def test_integration_assessment_represents_architecture_fit():
+    assessment = IntegrationAssessment(
+        decision_id="dec_test",
+        candidate_id="cand_milvus",
+        integration_complexity="MEDIUM",
+        migration_complexity="LOW",
+        operational_change="HIGH",
+        infrastructure_change="MEDIUM",
+        required_new_dependencies=[
+            "etcd",
+            "object storage",
+        ],
+        affected_components=[
+            "deployment",
+            "monitoring",
+        ],
+        team_skill_gaps=[
+            "distributed system operations",
+        ],
+        evidence_ids=[
+            "evi_milvus_architecture",
+        ],
+        rationale=(
+            "Adds several operational components "
+            "relative to the current Docker-only stack."
+        ),
+    )
+
+    serialized = asdict(assessment)
+
+    assert serialized["decision_id"] == "dec_test"
+    assert serialized["candidate_id"] == "cand_milvus"
+    assert serialized["integration_complexity"] == "MEDIUM"
+    assert serialized["operational_change"] == "HIGH"
+    assert serialized["required_new_dependencies"] == [
+        "etcd",
+        "object storage",
+    ]

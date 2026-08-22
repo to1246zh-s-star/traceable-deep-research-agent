@@ -34,6 +34,7 @@ from models import (
     EvidenceQuality,
     EvidenceSignal,
     ExecutionEvent,
+    IntegrationAssessment,
     ExecutionTrace,
     ReadinessSnapshot,
     Requirement,
@@ -45,6 +46,7 @@ from models import (
     SourceDiversity,
     SourceQuality,
     SummaryState,
+    TechnicalContext,
     TodoItem,
 )
 
@@ -72,6 +74,7 @@ V3_MODEL_TYPES = {
         EvidenceConflict,
         EvidenceQuality,
         EvidenceSignal,
+        IntegrationAssessment,
         ReadinessSnapshot,
         Requirement,
         ResearchAnalysis,
@@ -81,12 +84,15 @@ V3_MODEL_TYPES = {
         ResearchUsage,
         SourceDiversity,
         SourceQuality,
+        TechnicalContext,
     )
 }
 
 
 V3_STATE_FIELDS = (
     "decision_case",
+    "technical_context",
+    "integration_assessments",
     "decision_evaluation",
     "decision_comparison",
     "decision_sensitivity",
