@@ -75,6 +75,55 @@ Rules:
 11. Return no markdown or text outside the JSON object.
 """.strip()
 
+MULTI_EVIDENCE_SIGNAL_PROMPT = """
+You are a conservative technical evidence interpreter.
+
+You are given MULTIPLE independent retrieved evidence items.
+Each evidence item contains its own decision targets.
+
+For every target, determine ONLY how the evidence in the SAME
+evidence item affects the specified candidate with respect to
+the specified criterion.
+
+Evidence groups:
+{evidence_groups}
+
+Return ONLY valid JSON in this exact structure:
+
+{{
+  "results": [
+    {{
+      "signal_id": "supplied signal id",
+      "direction": "positive",
+      "strength": 0.0,
+      "rationale": "brief evidence-grounded explanation"
+    }}
+  ]
+}}
+
+Allowed direction values:
+
+- "positive": evidence supports the candidate on this criterion.
+- "negative": evidence indicates a disadvantage for the candidate.
+- "neutral": evidence is relevant but does not establish either direction.
+
+Rules:
+
+1. Use only the evidence belonging to the target's evidence group.
+2. Never combine facts across different evidence groups.
+3. Never infer missing facts.
+4. If evidence is ambiguous or incomplete, use "neutral".
+5. strength must be between 0 and 1.
+6. Neutral evidence should normally have low strength.
+7. Do not evaluate source trustworthiness.
+8. Do not evaluate applicability.
+9. Preserve every supplied signal_id exactly.
+10. Do not invent signal IDs.
+11. Return one result for every target when possible.
+12. Return no markdown or text outside the JSON object.
+""".strip()
+
+
 
 class SemanticSignalExtractor:
     """
@@ -97,9 +146,17 @@ class SemanticSignalExtractor:
         self,
         extraction_agent: ToolAwareSimpleAgent,
         config: Configuration,
+        *,
+        max_evidence_per_batch: int = 4,
     ) -> None:
+        if max_evidence_per_batch < 1:
+            raise ValueError(
+                "max_evidence_per_batch must be at least 1"
+            )
+
         self._agent = extraction_agent
         self._config = config
+        self.max_evidence_per_batch = max_evidence_per_batch
 
         self.max_retries = 1
         self.last_parse_status = "unknown"
@@ -151,10 +208,18 @@ class SemanticSignalExtractor:
 
         interpreted_by_signal_id: dict[str, EvidenceSignal] = {}
 
+        evidence_groups: list[
+            tuple[
+                Evidence,
+                list[EvidenceSignal],
+                list[dict[str, str]],
+            ]
+        ] = []
+
         for evidence_id, evidence_proposals in grouped.items():
             evidence = evidence_by_id[evidence_id]
 
-            targets = []
+            targets: list[dict[str, str]] = []
 
             for proposal in evidence_proposals:
                 candidate = candidate_by_id[
@@ -174,9 +239,36 @@ class SemanticSignalExtractor:
                     }
                 )
 
-            results = self._classify_batch(
-                evidence=evidence,
-                targets=targets,
+            evidence_groups.append(
+                (
+                    evidence,
+                    evidence_proposals,
+                    targets,
+                )
+            )
+
+        for start_index in range(
+            0,
+            len(evidence_groups),
+            self.max_evidence_per_batch,
+        ):
+            batch_groups = evidence_groups[
+                start_index:
+                start_index + self.max_evidence_per_batch
+            ]
+
+            results = self._classify_multi_evidence_batch(
+                groups=[
+                    (
+                        evidence,
+                        targets,
+                    )
+                    for (
+                        evidence,
+                        _,
+                        targets,
+                    ) in batch_groups
+                ]
             )
 
             result_by_signal_id = {
@@ -184,32 +276,36 @@ class SemanticSignalExtractor:
                 for result in (results or [])
             }
 
-            for proposal in evidence_proposals:
-                result = result_by_signal_id.get(
-                    proposal.signal_id
-                )
+            for (
+                _,
+                evidence_proposals,
+                _,
+            ) in batch_groups:
+                for proposal in evidence_proposals:
+                    result = result_by_signal_id.get(
+                        proposal.signal_id
+                    )
 
-                if result is None:
-                    # Missing / failed semantic output must remain neutral.
+                    if result is None:
+                        interpreted_by_signal_id[
+                            proposal.signal_id
+                        ] = proposal
+                        continue
+
                     interpreted_by_signal_id[
                         proposal.signal_id
-                    ] = proposal
-                    continue
-
-                interpreted_by_signal_id[
-                    proposal.signal_id
-                ] = EvidenceSignal(
-                    signal_id=proposal.signal_id,
-                    evidence_id=proposal.evidence_id,
-                    candidate_id=proposal.candidate_id,
-                    criterion_id=proposal.criterion_id,
-                    direction=result["direction"],
-                    strength=result["strength"],
-                    source_confidence=proposal.source_confidence,
-                    applicability=proposal.applicability,
-                    atomic_claim_id=proposal.atomic_claim_id,
-                    rationale=result["rationale"],
-                )
+                    ] = EvidenceSignal(
+                        signal_id=proposal.signal_id,
+                        evidence_id=proposal.evidence_id,
+                        candidate_id=proposal.candidate_id,
+                        criterion_id=proposal.criterion_id,
+                        direction=result["direction"],
+                        strength=result["strength"],
+                        source_confidence=proposal.source_confidence,
+                        applicability=proposal.applicability,
+                        atomic_claim_id=proposal.atomic_claim_id,
+                        rationale=result["rationale"],
+                    )
 
         # Preserve ordering only for proposals whose references were valid.
         # Invalid evidence/candidate/criterion references keep the historical
@@ -235,29 +331,80 @@ class SemanticSignalExtractor:
         evidence: Evidence,
         targets: list[dict[str, str]],
     ) -> list[dict[str, Any]] | None:
-        """Interpret all targets associated with one evidence item."""
+        """Backward-compatible single-evidence classification wrapper."""
+
+        return self._classify_multi_evidence_batch(
+            groups=[
+                (
+                    evidence,
+                    targets,
+                )
+            ]
+        )
+
+    def _classify_multi_evidence_batch(
+        self,
+        *,
+        groups: list[
+            tuple[
+                Evidence,
+                list[dict[str, str]],
+            ]
+        ],
+    ) -> list[dict[str, Any]] | None:
+        """
+        Interpret a bounded group of evidence items in one provider call.
+
+        Each target remains scoped to its own evidence item. Results are
+        mapped back exclusively through the supplied signal_id values.
+        """
 
         self.retry_count = 0
         self.last_parse_status = "unknown"
 
-        evidence_text = self._evidence_text(evidence)
+        evidence_groups: list[dict[str, Any]] = []
+        allowed_signal_ids: set[str] = set()
 
-        if not evidence_text:
+        for evidence, targets in groups:
+            evidence_text = self._evidence_text(
+                evidence
+            )
+
+            if not evidence_text:
+                continue
+
+            valid_targets = [
+                target
+                for target in targets
+                if target.get("signal_id")
+            ]
+
+            if not valid_targets:
+                continue
+
+            evidence_groups.append(
+                {
+                    "evidence_id": evidence.evidence_id,
+                    "evidence": evidence_text,
+                    "targets": valid_targets,
+                }
+            )
+
+            allowed_signal_ids.update(
+                target["signal_id"]
+                for target in valid_targets
+            )
+
+        if not evidence_groups:
             self.last_parse_status = "empty_evidence"
             return None
 
-        allowed_signal_ids = {
-            target["signal_id"]
-            for target in targets
-        }
-
-        prompt = SIGNAL_PROMPT.format(
-            evidence=evidence_text,
-            targets=json.dumps(
-                targets,
+        prompt = MULTI_EVIDENCE_SIGNAL_PROMPT.format(
+            evidence_groups=json.dumps(
+                evidence_groups,
                 ensure_ascii=False,
                 indent=2,
-            ),
+            )
         )
 
         result = self._run_and_parse(

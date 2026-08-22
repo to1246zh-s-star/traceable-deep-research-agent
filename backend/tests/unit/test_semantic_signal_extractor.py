@@ -1,3 +1,4 @@
+import json
 from models import (
     Candidate,
     DecisionCase,
@@ -338,7 +339,7 @@ def test_same_evidence_multiple_targets_use_one_llm_call():
     assert signals[1].applicability == 0.75
 
 
-def test_different_evidence_items_use_separate_llm_calls():
+def test_different_evidence_items_share_multi_evidence_batch():
     state, decision, proposal = make_inputs()
 
     state.evidence_items.append(
@@ -365,13 +366,23 @@ def test_different_evidence_items_use_separate_llm_calls():
     )
 
     agent = StubAgent([
-        batch_response(
-            signal_id="sig_proposal",
-            direction="positive",
-        ),
-        batch_response(
-            signal_id="sig_second",
-            direction="negative",
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "signal_id": "sig_proposal",
+                        "direction": "positive",
+                        "strength": 0.8,
+                        "rationale": "Supported.",
+                    },
+                    {
+                        "signal_id": "sig_second",
+                        "direction": "negative",
+                        "strength": 0.8,
+                        "rationale": "Disadvantage.",
+                    },
+                ]
+            }
         ),
     ])
 
@@ -386,7 +397,8 @@ def test_different_evidence_items_use_separate_llm_calls():
         [proposal, proposal2],
     )
 
-    assert agent.calls == 2
+    assert agent.calls == 1
+    assert extractor.llm_call_count == 1
     assert signals[0].direction == "positive"
     assert signals[1].direction == "negative"
 
@@ -558,5 +570,148 @@ def test_llm_call_count_tracks_actual_provider_calls():
     )
 
     # Initial call + one repair retry.
+    assert extractor.llm_call_count == 2
+    assert agent.calls == 2
+
+
+def test_multi_evidence_batch_reduces_provider_calls():
+    state, decision, proposal = make_inputs()
+
+    from dataclasses import replace
+
+    evidence_a = state.evidence_items[0]
+
+    evidence_items = []
+    proposals = []
+
+    for index in range(5):
+        evidence = replace(
+            evidence_a,
+            evidence_id=f"evi_batch_{index}",
+        )
+        evidence_items.append(evidence)
+
+        proposals.append(
+            replace(
+                proposal,
+                signal_id=f"sig_batch_{index}",
+                evidence_id=evidence.evidence_id,
+            )
+        )
+
+    state.evidence_items = evidence_items
+
+    responses = []
+
+    for batch_start in (0, 4):
+        batch_proposals = proposals[
+            batch_start:
+            batch_start + 4
+        ]
+
+        responses.append(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "signal_id": item.signal_id,
+                            "direction": "positive",
+                            "strength": 0.8,
+                            "rationale": "Supported.",
+                        }
+                        for item in batch_proposals
+                    ]
+                }
+            )
+        )
+
+    agent = StubAgent(responses)
+
+    extractor = SemanticSignalExtractor(
+        agent,
+        DummyConfig(),
+        max_evidence_per_batch=4,
+    )
+
+    result = extractor.extract(
+        state,
+        decision,
+        proposals,
+    )
+
+    assert len(result) == 5
+
+    # Five evidence items become two provider calls: 4 + 1.
+    assert extractor.llm_call_count == 2
+    assert agent.calls == 2
+
+
+def test_multi_evidence_batch_size_one_preserves_old_call_shape():
+    state, decision, proposal = make_inputs()
+
+    from dataclasses import replace
+
+    evidence_a = state.evidence_items[0]
+
+    evidence_b = replace(
+        evidence_a,
+        evidence_id="evi_second",
+    )
+
+    state.evidence_items = [
+        evidence_a,
+        evidence_b,
+    ]
+
+    proposal_b = replace(
+        proposal,
+        signal_id="sig_second",
+        evidence_id="evi_second",
+    )
+
+    agent = StubAgent(
+        [
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "signal_id": proposal.signal_id,
+                            "direction": "positive",
+                            "strength": 0.8,
+                            "rationale": "Supported.",
+                        }
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "signal_id": proposal_b.signal_id,
+                            "direction": "positive",
+                            "strength": 0.8,
+                            "rationale": "Supported.",
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+
+    extractor = SemanticSignalExtractor(
+        agent,
+        DummyConfig(),
+        max_evidence_per_batch=1,
+    )
+
+    extractor.extract(
+        state,
+        decision,
+        [
+            proposal,
+            proposal_b,
+        ],
+    )
+
     assert extractor.llm_call_count == 2
     assert agent.calls == 2
