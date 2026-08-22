@@ -6,6 +6,7 @@ from models import (
     DecisionCase,
     DecisionCriterion,
     Requirement,
+    SensitivityResult,
 )
 
 
@@ -100,3 +101,81 @@ def test_decision_model_ids_are_unique():
 
     assert first_candidate.candidate_id != second_candidate.candidate_id
     assert first_decision.decision_id != second_decision.decision_id
+
+
+def test_sensitivity_result_preserves_baseline_decision_context():
+    result = SensitivityResult(
+        decision_id="dec_test",
+        criterion_id="crit_scalability",
+        baseline_weight=0.3,
+        baseline_winner_id="cand_qdrant",
+        score_margin_before=0.5,
+    )
+
+    assert result.decision_id == "dec_test"
+    assert result.criterion_id == "crit_scalability"
+    assert result.baseline_weight == 0.3
+    assert result.baseline_winner_id == "cand_qdrant"
+    assert result.score_margin_before == 0.5
+
+    assert result.recommendation_changes is False
+    assert result.switch_threshold is None
+    assert result.weight_delta is None
+    assert result.direction_of_change is None
+    assert result.competing_candidate_id is None
+    assert result.score_margin_after is None
+
+
+def test_sensitivity_result_represents_recommendation_flip():
+    result = SensitivityResult(
+        decision_id="dec_test",
+        criterion_id="crit_scalability",
+        baseline_weight=0.3,
+        baseline_winner_id="cand_qdrant",
+        score_margin_before=0.5,
+        recommendation_changes=True,
+        switch_threshold=0.45,
+        weight_delta=0.15,
+        direction_of_change="increase",
+        competing_candidate_id="cand_milvus",
+        score_margin_after=-0.1,
+    )
+
+    assert result.recommendation_changes is True
+    assert result.switch_threshold == 0.45
+    assert result.weight_delta == 0.15
+    assert result.direction_of_change == "increase"
+    assert result.competing_candidate_id == "cand_milvus"
+    assert result.score_margin_after == -0.1
+
+
+def test_sensitivity_result_serializes_with_asdict():
+    result = SensitivityResult(
+        decision_id="dec_test",
+        criterion_id="crit_scalability",
+        baseline_weight=0.3,
+        baseline_winner_id="cand_qdrant",
+        score_margin_before=0.5,
+        recommendation_changes=True,
+        switch_threshold=0.45,
+        weight_delta=0.15,
+        direction_of_change="increase",
+        competing_candidate_id="cand_milvus",
+        score_margin_after=-0.1,
+    )
+
+    serialized = asdict(result)
+
+    assert serialized == {
+        "decision_id": "dec_test",
+        "criterion_id": "crit_scalability",
+        "baseline_weight": 0.3,
+        "baseline_winner_id": "cand_qdrant",
+        "score_margin_before": 0.5,
+        "recommendation_changes": True,
+        "switch_threshold": 0.45,
+        "weight_delta": 0.15,
+        "direction_of_change": "increase",
+        "competing_candidate_id": "cand_milvus",
+        "score_margin_after": -0.1,
+    }

@@ -289,6 +289,27 @@ class DecisionComparison:
 
 
 @dataclass(kw_only=True)
+class SensitivityResult:
+    """Deterministic sensitivity result for one decision criterion."""
+
+    decision_id: str
+    criterion_id: str
+
+    baseline_weight: float
+    baseline_winner_id: str
+    score_margin_before: float
+
+    recommendation_changes: bool = field(default=False)
+
+    switch_threshold: Optional[float] = field(default=None)
+    weight_delta: Optional[float] = field(default=None)
+    direction_of_change: Optional[str] = field(default=None)
+
+    competing_candidate_id: Optional[str] = field(default=None)
+    score_margin_after: Optional[float] = field(default=None)
+
+
+@dataclass(kw_only=True)
 class SourceQuality:
     """Quality assessment for the source behind one Evidence item."""
 
