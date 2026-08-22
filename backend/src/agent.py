@@ -37,7 +37,9 @@ from models import (
     SummaryState,
     SummaryStateOutput,
     TodoItem,
-)
+
+    IntegrationAssessment,
+    TechnicalContext,)
 from services.constraint_resolver import ConstraintResolver
 from services.decision_case_extractor import DecisionCaseExtractor
 from services.decision_input_builder import (
@@ -67,6 +69,8 @@ from services.tool_events import ToolCallTracker
 
 logger = logging.getLogger(__name__)
 
+
+from services.technical_context_extractor import TechnicalContextExtractor
 
 class DeepResearchAgent:
     """Coordinator orchestrating TODO-based research workflow using HelloAgents."""
@@ -151,6 +155,24 @@ class DeepResearchAgent:
             self.config,
         )
 
+        technical_context_agent = (
+            self._create_tool_aware_agent(
+                name="technical-context-extractor",
+                system_prompt=(
+                    "Extract structured technical architecture "
+                    "context conservatively. Return JSON only."
+                ),
+            )
+        )
+
+        self.technical_context_extractor = (
+            TechnicalContextExtractor(
+                technical_context_agent,
+                self.config,
+            )
+        )
+
+
         self.constraint_resolver = ConstraintResolver(
             self.constraint_resolution_agent,
             self.config,
@@ -183,6 +205,37 @@ class DeepResearchAgent:
             decision,
             proposals,
         )
+
+    def extract_technical_context(
+        self,
+        state: SummaryState,
+        decision: DecisionCase,
+    ) -> TechnicalContext | None:
+        """Extract optional architecture-aware technical context."""
+
+        if state.technical_context is not None:
+            return state.technical_context
+
+        extractor = getattr(
+            self,
+            "technical_context_extractor",
+            None,
+        )
+
+        if extractor is None:
+            return None
+
+        try:
+            return extractor.extract(
+                state.research_topic,
+                decision,
+            )
+        except Exception:
+            logger.exception(
+                "Technical context extraction failed; "
+                "continuing without architecture context"
+            )
+            return None
 
     def execute_decision_intelligence(
         self,
@@ -222,6 +275,18 @@ class DeepResearchAgent:
                 "semantic_signal_extractor",
                 None,
             ),
+            "llm_call_count",
+            0,
+        )
+
+        context_extractor = getattr(
+            self,
+            "technical_context_extractor",
+            None,
+        )
+
+        context_calls_before = getattr(
+            context_extractor,
             "llm_call_count",
             0,
         )
@@ -297,6 +362,29 @@ class DeepResearchAgent:
                 )
                 constraint_results = {}
 
+        technical_context = (
+            state.technical_context
+        )
+
+        if technical_context is None:
+            technical_context = (
+                self.extract_technical_context(
+                    state,
+                    decision,
+                )
+            )
+
+            if technical_context is not None:
+                state.technical_context = (
+                    technical_context
+                )
+
+        context_calls_after = getattr(
+            context_extractor,
+            "llm_call_count",
+            0,
+        )
+
         semantic_calls_after = getattr(
             getattr(
                 self,
@@ -323,6 +411,12 @@ class DeepResearchAgent:
             - semantic_calls_before,
         )
 
+        usage.semantic_llm_calls += max(
+            0,
+            context_calls_after
+            - context_calls_before,
+        )
+
         usage.constraint_llm_calls += max(
             0,
             constraint_calls_after
@@ -333,6 +427,7 @@ class DeepResearchAgent:
             state,
             decision,
             constraint_results=constraint_results,
+            technical_context=technical_context,
             evidence_signals=semantic_signals,
             evidence_assessments=assessments,
             research_budget=research_budget,
@@ -345,6 +440,8 @@ class DeepResearchAgent:
         decision: DecisionCase,
         *,
         constraint_results: dict[str, dict[str, bool]] | None = None,
+        technical_context: TechnicalContext | None = None,
+        integration_assessments: list[IntegrationAssessment] | None = None,
         criterion_scores: list[CandidateCriterionScore] | None = None,
         evidence_signals: list[EvidenceSignal] | None = None,
         evidence_assessments: list[EvidenceAssessment] | None = None,
@@ -357,6 +454,8 @@ class DeepResearchAgent:
             state,
             decision,
             constraint_results=constraint_results,
+            technical_context=technical_context,
+            integration_assessments=integration_assessments,
             criterion_scores=criterion_scores,
             evidence_signals=evidence_signals,
             evidence_assessments=evidence_assessments,

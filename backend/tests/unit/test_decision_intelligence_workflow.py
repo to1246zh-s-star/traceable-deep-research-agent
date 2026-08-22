@@ -7,7 +7,8 @@ from models import (
     Evidence,
     EvidenceSignal,
     SummaryState,
-)
+
+    TechnicalContext,)
 
 
 class StubSemanticExtractor:
@@ -345,6 +346,8 @@ def test_decision_intelligence_auto_resolves_constraints(monkeypatch):
         decision,
         *,
         constraint_results=None,
+        technical_context=None,
+        integration_assessments=None,
         evidence_signals=None,
         evidence_assessments=None,
         research_budget=None,
@@ -426,6 +429,8 @@ def test_decision_intelligence_constraint_resolution_failure_is_safe(
         decision,
         *,
         constraint_results=None,
+        technical_context=None,
+        integration_assessments=None,
         evidence_signals=None,
         evidence_assessments=None,
         research_budget=None,
@@ -509,6 +514,8 @@ def test_explicit_constraint_results_skip_resolver(monkeypatch):
         decision,
         *,
         constraint_results=None,
+        technical_context=None,
+        integration_assessments=None,
         evidence_signals=None,
         evidence_assessments=None,
         research_budget=None,
@@ -766,3 +773,95 @@ def test_decision_usage_accumulates_across_passes():
         state.research_usage.constraint_llm_calls
         == 2
     )
+
+
+def test_decision_intelligence_extracts_technical_context():
+    state = make_state()
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    context = TechnicalContext(
+        existing_stack=[
+            "Python",
+            "FastAPI",
+        ],
+        deployment_environment=[
+            "Docker-only",
+        ],
+    )
+
+    class ContextExtractor:
+        def __init__(self):
+            self.calls = []
+            self.llm_call_count = 0
+
+        def extract(
+            self,
+            topic,
+            decision,
+        ):
+            self.calls.append(
+                (topic, decision)
+            )
+            self.llm_call_count += 1
+            return context
+
+    extractor = ContextExtractor()
+
+    agent.technical_context_extractor = (
+        extractor
+    )
+
+    result = (
+        agent.execute_decision_intelligence(
+            state
+        )
+    )
+
+    assert result is state
+    assert state.technical_context is context
+    assert len(extractor.calls) == 1
+
+    assert state.research_usage is not None
+    assert (
+        state.research_usage.semantic_llm_calls
+        >= 1
+    )
+
+
+def test_decision_intelligence_reuses_existing_technical_context():
+    state = make_state()
+
+    existing = TechnicalContext(
+        existing_stack=["Python"]
+    )
+    state.technical_context = existing
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    class MustNotRun:
+        llm_call_count = 0
+
+        def extract(
+            self,
+            topic,
+            decision,
+        ):
+            raise AssertionError(
+                "existing TechnicalContext "
+                "must be reused"
+            )
+
+    agent.technical_context_extractor = (
+        MustNotRun()
+    )
+
+    agent.execute_decision_intelligence(
+        state
+    )
+
+    assert state.technical_context is existing
