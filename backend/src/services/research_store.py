@@ -48,7 +48,8 @@ from models import (
     SummaryState,
     TechnicalContext,
     TodoItem,
-)
+
+    RecommendationRobustness,)
 
 
 V3_MODEL_TYPES = {
@@ -69,6 +70,7 @@ V3_MODEL_TYPES = {
         DecisionEvaluation,
         DecisionReadiness,
         SensitivityResult,
+    RecommendationRobustness,
         EvidenceApplicability,
         EvidenceAssessment,
         EvidenceConflict,
@@ -96,6 +98,7 @@ V3_STATE_FIELDS = (
     "decision_evaluation",
     "decision_comparison",
     "decision_sensitivity",
+    "recommendation_robustness",
     "atomic_claims",
     "evidence_assessments",
     "evidence_signals",

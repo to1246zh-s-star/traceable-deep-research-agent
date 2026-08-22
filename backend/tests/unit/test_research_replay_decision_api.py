@@ -385,3 +385,51 @@ def test_replay_uses_empty_architecture_defaults():
     assert decision_payload is not None
     assert decision_payload["technical_context"] is None
     assert decision_payload["integration_assessments"] == []
+
+
+def test_replay_exposes_recommendation_robustness():
+    from main import (
+        _serialize_decision_intelligence,
+    )
+    from models import (
+        DecisionCase,
+        RecommendationRobustness,
+        SummaryState,
+    )
+
+    state = SummaryState(
+        decision_case=DecisionCase(
+            decision_id="dec_robust",
+            question="Choose A or B",
+        ),
+        recommendation_robustness=(
+            RecommendationRobustness(
+                decision_id="dec_robust",
+                baseline_winner_id="cand_a",
+                status="ROBUST",
+                score_margin=1.2,
+                tested_criteria_count=2,
+                flip_count=0,
+                reasons=[
+                    "No tested perturbation changed the winner."
+                ],
+            )
+        ),
+    )
+
+    payload = _serialize_decision_intelligence(
+        state
+    )
+
+    assert payload is not None
+    assert payload["robustness"] is not None
+
+    robustness = payload["robustness"]
+
+    assert robustness["status"] == "ROBUST"
+    assert (
+        robustness["baseline_winner_id"]
+        == "cand_a"
+    )
+    assert robustness["flip_count"] == 0
+

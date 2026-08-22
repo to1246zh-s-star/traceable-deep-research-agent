@@ -271,6 +271,9 @@ def _serialize_decision_intelligence(
         "sensitivity": _serialize_v3_value(
             state.decision_sensitivity
         ),
+        "robustness": _serialize_v3_value(
+            state.recommendation_robustness
+        ),
         "readiness": _serialize_v3_value(
             state.decision_readiness
         ),

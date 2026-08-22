@@ -323,3 +323,63 @@ def test_sqlite_persists_architecture_context(tmp_path):
     assert assessment.evidence_ids == [
         "evi_qdrant_architecture",
     ]
+
+
+def test_sqlite_persists_recommendation_robustness(tmp_path):
+    from models import (
+        RecommendationRobustness,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        recommendation_robustness=(
+            RecommendationRobustness(
+                decision_id="dec_robust",
+                baseline_winner_id="cand_a",
+                status="MODERATE",
+                score_margin=0.8,
+                tested_criteria_count=2,
+                flip_count=1,
+                minimum_flip_delta=0.1,
+                minimum_relative_flip_delta=0.1,
+                unstable_criterion_ids=[
+                    "crit_ops"
+                ],
+                reasons=[
+                    "Weight sensitivity detected."
+                ],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+
+    restored = store.get(research_id)
+
+    assert restored is not None
+    assert (
+        restored.recommendation_robustness
+        is not None
+    )
+
+    robustness = (
+        restored.recommendation_robustness
+    )
+
+    assert robustness.status == "MODERATE"
+    assert (
+        robustness.baseline_winner_id
+        == "cand_a"
+    )
+    assert robustness.flip_count == 1
+    assert (
+        robustness.unstable_criterion_ids
+        == ["crit_ops"]
+    )

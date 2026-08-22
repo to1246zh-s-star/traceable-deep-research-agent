@@ -23,6 +23,7 @@ from services.decision_input_builder import (
 from services.decision_readiness import calculate_readiness
 from services.decision_sensitivity import analyze_decision_sensitivity
 from services.research_analysis import analyze_research
+from services.recommendation_robustness import analyze_recommendation_robustness
 from services.research_stopping import should_continue_research
 
 
@@ -116,6 +117,21 @@ def run_decision_pipeline(
         evidence_assessments,
     )
 
+    robustness = analyze_recommendation_robustness(
+        decision,
+        comparison,
+        evaluation,
+        sensitivity,
+        readiness,
+        evidence_assessments,
+        evidence_signals,
+        (
+            integration_assessments
+            if integration_assessments is not None
+            else state.integration_assessments
+        ),
+    )
+
     history = list(state.readiness_history)
 
     history.append(
@@ -147,6 +163,7 @@ def run_decision_pipeline(
     state.decision_evaluation = evaluation
     state.decision_comparison = comparison
     state.decision_sensitivity = sensitivity
+    state.recommendation_robustness = robustness
 
     state.evidence_signals = list(evidence_signals)
     state.evidence_assessments = list(evidence_assessments)

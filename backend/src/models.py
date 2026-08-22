@@ -351,6 +351,32 @@ class SensitivityResult:
 
 
 @dataclass(kw_only=True)
+class RecommendationRobustness:
+    """Deterministic robustness assessment for the current recommendation."""
+
+    decision_id: str
+
+    baseline_winner_id: Optional[str] = field(default=None)
+    status: str = field(default="UNKNOWN")
+
+    score_margin: Optional[float] = field(default=None)
+
+    tested_criteria_count: int = field(default=0)
+    flip_count: int = field(default=0)
+    minimum_flip_delta: Optional[float] = field(default=None)
+    minimum_relative_flip_delta: Optional[float] = field(default=None)
+    unstable_criterion_ids: list[str] = field(default_factory=list)
+
+    unresolved_candidate_ids: list[str] = field(default_factory=list)
+    weak_evidence_candidate_ids: list[str] = field(default_factory=list)
+    architecture_unknown_candidate_ids: list[str] = field(default_factory=list)
+
+    readiness_status: Optional[str] = field(default=None)
+
+    reasons: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class SourceQuality:
     """Quality assessment for the source behind one Evidence item."""
 
@@ -690,6 +716,9 @@ class SummaryState:
     decision_evaluation: Optional[DecisionEvaluation] = field(default=None)
     decision_comparison: Optional[DecisionComparison] = field(default=None)
     decision_sensitivity: list[SensitivityResult] = field(default_factory=list)
+    recommendation_robustness: Optional[RecommendationRobustness] = field(
+        default=None
+    )
 
     atomic_claims: list[AtomicClaim] = field(default_factory=list)
     evidence_assessments: list[EvidenceAssessment] = field(default_factory=list)

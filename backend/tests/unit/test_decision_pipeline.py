@@ -471,3 +471,88 @@ def test_decision_pipeline_preserves_existing_architecture_context():
     assert state.integration_assessments == original_assessments
 
 
+
+
+def test_decision_pipeline_stores_recommendation_robustness():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_robust_pipeline",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    scores = [
+        CandidateCriterionScore(
+            candidate_id="cand_a",
+            criterion_id="crit_ops",
+            fitness_score=8.0,
+        ),
+        CandidateCriterionScore(
+            candidate_id="cand_b",
+            criterion_id="crit_ops",
+            fitness_score=6.0,
+        ),
+    ]
+
+    result = run_decision_pipeline(
+        state,
+        decision,
+        constraint_results={},
+        criterion_scores=scores,
+        evidence_signals=[],
+        evidence_assessments=[],
+    )
+
+    assert result is state
+    assert (
+        state.recommendation_robustness
+        is not None
+    )
+
+    robustness = (
+        state.recommendation_robustness
+    )
+
+    assert (
+        robustness.baseline_winner_id
+        == "cand_a"
+    )
+
+    assert robustness.score_margin == 2.0
+
+    assert robustness.status in {
+        "ROBUST",
+        "MODERATE",
+        "FRAGILE",
+    }
+
