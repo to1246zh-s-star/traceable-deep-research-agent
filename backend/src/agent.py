@@ -71,6 +71,7 @@ logger = logging.getLogger(__name__)
 
 
 from services.technical_context_extractor import TechnicalContextExtractor
+from services.integration_assessor import IntegrationAssessor
 
 class DeepResearchAgent:
     """Coordinator orchestrating TODO-based research workflow using HelloAgents."""
@@ -172,6 +173,26 @@ class DeepResearchAgent:
             )
         )
 
+        integration_assessment_agent = (
+            self._create_tool_aware_agent(
+                name="integration-assessor",
+                system_prompt=(
+                    "Assess candidate architecture "
+                    "integration conservatively "
+                    "from context and evidence. "
+                    "Return JSON only."
+                ),
+            )
+        )
+
+        self.integration_assessor = (
+            IntegrationAssessor(
+                integration_assessment_agent,
+                self.config,
+            )
+        )
+
+
 
         self.constraint_resolver = ConstraintResolver(
             self.constraint_resolution_agent,
@@ -237,6 +258,36 @@ class DeepResearchAgent:
             )
             return None
 
+    def assess_integration(
+        self,
+        state: SummaryState,
+        decision: DecisionCase,
+        technical_context: TechnicalContext | None,
+    ) -> list[IntegrationAssessment]:
+        """Assess candidate architecture fit as optional enrichment."""
+
+        assessor = getattr(
+            self,
+            "integration_assessor",
+            None,
+        )
+
+        if assessor is None:
+            return []
+
+        try:
+            return assessor.assess(
+                state,
+                decision,
+                technical_context,
+            )
+        except Exception:
+            logger.exception(
+                "Integration assessment failed; "
+                "continuing without architecture assessment"
+            )
+            return []
+
     def execute_decision_intelligence(
         self,
         state: SummaryState,
@@ -287,6 +338,18 @@ class DeepResearchAgent:
 
         context_calls_before = getattr(
             context_extractor,
+            "llm_call_count",
+            0,
+        )
+
+        integration_assessor = getattr(
+            self,
+            "integration_assessor",
+            None,
+        )
+
+        integration_calls_before = getattr(
+            integration_assessor,
             "llm_call_count",
             0,
         )
@@ -379,6 +442,20 @@ class DeepResearchAgent:
                     technical_context
                 )
 
+        integration_assessments = (
+            self.assess_integration(
+                state,
+                decision,
+                technical_context,
+            )
+        )
+
+        integration_calls_after = getattr(
+            integration_assessor,
+            "llm_call_count",
+            0,
+        )
+
         context_calls_after = getattr(
             context_extractor,
             "llm_call_count",
@@ -417,6 +494,12 @@ class DeepResearchAgent:
             - context_calls_before,
         )
 
+        usage.semantic_llm_calls += max(
+            0,
+            integration_calls_after
+            - integration_calls_before,
+        )
+
         usage.constraint_llm_calls += max(
             0,
             constraint_calls_after
@@ -428,6 +511,7 @@ class DeepResearchAgent:
             decision,
             constraint_results=constraint_results,
             technical_context=technical_context,
+            integration_assessments=integration_assessments,
             evidence_signals=semantic_signals,
             evidence_assessments=assessments,
             research_budget=research_budget,

@@ -865,3 +865,127 @@ def test_decision_intelligence_reuses_existing_technical_context():
     )
 
     assert state.technical_context is existing
+
+
+def test_decision_intelligence_populates_integration_assessments():
+    state = make_state()
+
+    context = TechnicalContext(
+        existing_stack=["Python"],
+        deployment_environment=[
+            "Docker-only"
+        ],
+    )
+
+    state.technical_context = context
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    class StubIntegrationAssessor:
+        def __init__(self):
+            self.llm_call_count = 0
+            self.calls = []
+
+        def assess(
+            self,
+            state_arg,
+            decision_arg,
+            context_arg,
+        ):
+            from models import (
+                IntegrationAssessment,
+            )
+
+            self.calls.append(
+                (
+                    state_arg,
+                    decision_arg,
+                    context_arg,
+                )
+            )
+
+            self.llm_call_count += 1
+
+            return [
+                IntegrationAssessment(
+                    decision_id=
+                        decision_arg.decision_id,
+                    candidate_id=
+                        candidate.candidate_id,
+                    integration_complexity="LOW",
+                )
+                for candidate
+                in decision_arg.candidates
+            ]
+
+    assessor = StubIntegrationAssessor()
+
+    agent.integration_assessor = assessor
+
+    result = (
+        agent.execute_decision_intelligence(
+            state
+        )
+    )
+
+    assert result is state
+
+    assert len(
+        state.integration_assessments
+    ) == len(
+        state.decision_case.candidates
+    )
+
+    assert all(
+        assessment.integration_complexity
+        == "LOW"
+        for assessment
+        in state.integration_assessments
+    )
+
+    assert assessor.calls
+    assert state.research_usage is not None
+
+    assert (
+        state.research_usage
+        .semantic_llm_calls
+        >= 1
+    )
+
+
+def test_missing_integration_assessor_does_not_break_workflow():
+    state = make_state()
+
+    state.technical_context = (
+        TechnicalContext(
+            existing_stack=["Python"]
+        )
+    )
+
+    agent = make_agent(
+        StubSemanticExtractor(result=[])
+    )
+
+    # object.__new__ style test agents may not have the new service.
+    assert not hasattr(
+        agent,
+        "integration_assessor",
+    )
+
+    result = (
+        agent.execute_decision_intelligence(
+            state
+        )
+    )
+
+    assert result is state
+    assert (
+        state.integration_assessments
+        == []
+    )
+    assert (
+        state.decision_evaluation
+        is not None
+    )
