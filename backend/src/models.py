@@ -643,6 +643,7 @@ class SummaryState:
     decision_case: Optional[DecisionCase] = field(default=None)
     decision_evaluation: Optional[DecisionEvaluation] = field(default=None)
     decision_comparison: Optional[DecisionComparison] = field(default=None)
+    decision_sensitivity: list[SensitivityResult] = field(default_factory=list)
 
     atomic_claims: list[AtomicClaim] = field(default_factory=list)
     evidence_assessments: list[EvidenceAssessment] = field(default_factory=list)

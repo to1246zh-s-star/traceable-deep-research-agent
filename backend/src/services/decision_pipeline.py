@@ -19,6 +19,7 @@ from services.decision_input_builder import (
     build_evidence_signals,
 )
 from services.decision_readiness import calculate_readiness
+from services.decision_sensitivity import analyze_decision_sensitivity
 from services.research_analysis import analyze_research
 from services.research_stopping import should_continue_research
 
@@ -93,6 +94,12 @@ def run_decision_pipeline(
             ),
         )
 
+    sensitivity = analyze_decision_sensitivity(
+        decision,
+        comparison,
+        criterion_scores,
+    )
+
     analysis = analyze_research(
         decision,
         evidence_signals,
@@ -126,6 +133,7 @@ def run_decision_pipeline(
     state.decision_case = decision
     state.decision_evaluation = evaluation
     state.decision_comparison = comparison
+    state.decision_sensitivity = sensitivity
 
     state.evidence_signals = list(evidence_signals)
     state.evidence_assessments = list(evidence_assessments)

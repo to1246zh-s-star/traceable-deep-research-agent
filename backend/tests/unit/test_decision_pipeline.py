@@ -229,3 +229,118 @@ def test_decision_pipeline_auto_builds_evidence_inputs():
 
     assert state.research_analysis is not None
     assert state.decision_readiness is not None
+
+
+def test_decision_pipeline_populates_sensitivity_results():
+    decision = DecisionCase(
+        decision_id="dec_pipeline_sensitivity",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=0.7,
+            ),
+            DecisionCriterion(
+                criterion_id="crit_scale",
+                name="Scalability",
+                weight=0.3,
+            ),
+        ],
+    )
+
+    criterion_scores = [
+        CandidateCriterionScore(
+            candidate_id="cand_a",
+            criterion_id="crit_ops",
+            fitness_score=9.0,
+        ),
+        CandidateCriterionScore(
+            candidate_id="cand_a",
+            criterion_id="crit_scale",
+            fitness_score=5.0,
+        ),
+        CandidateCriterionScore(
+            candidate_id="cand_b",
+            criterion_id="crit_ops",
+            fitness_score=6.0,
+        ),
+        CandidateCriterionScore(
+            candidate_id="cand_b",
+            criterion_id="crit_scale",
+            fitness_score=10.0,
+        ),
+    ]
+
+    state = SummaryState(
+        research_topic="Choose A or B",
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=criterion_scores,
+    )
+
+    assert state.decision_comparison is not None
+    assert state.decision_comparison.status == "complete"
+
+    assert len(state.decision_sensitivity) == 2
+
+    scalability = next(
+        result
+        for result in state.decision_sensitivity
+        if result.criterion_id == "crit_scale"
+    )
+
+    assert scalability.recommendation_changes is True
+    assert scalability.baseline_winner_id == "cand_a"
+    assert scalability.competing_candidate_id == "cand_b"
+
+
+def test_incomplete_pipeline_clears_sensitivity_results():
+    decision = DecisionCase(
+        decision_id="dec_pipeline_incomplete_sensitivity",
+        question="Choose A or B",
+        candidates=[
+            Candidate(candidate_id="cand_a", name="A"),
+            Candidate(candidate_id="cand_b", name="B"),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            )
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B",
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            )
+        ],
+    )
+
+    assert state.decision_comparison is not None
+    assert state.decision_comparison.status == "incomplete"
+    assert state.decision_sensitivity == []

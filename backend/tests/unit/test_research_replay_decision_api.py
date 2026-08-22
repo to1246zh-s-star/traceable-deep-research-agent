@@ -7,6 +7,7 @@ from models import (
     ResearchBudget,
     ResearchStoppingDecision,
     ResearchUsage,
+    SensitivityResult,
     SummaryState,
 )
 
@@ -43,6 +44,21 @@ def test_replay_exposes_decision_intelligence_state():
     state = SummaryState(
         research_topic="A vs B",
         decision_case=decision,
+        decision_sensitivity=[
+            SensitivityResult(
+                decision_id="dec_api",
+                criterion_id="crit_scale",
+                baseline_weight=0.30,
+                baseline_winner_id="cand_a",
+                score_margin_before=0.60,
+                recommendation_changes=True,
+                switch_threshold=0.38,
+                weight_delta=0.08,
+                direction_of_change="increase",
+                competing_candidate_id="cand_b",
+                score_margin_after=-0.04,
+            )
+        ],
         decision_readiness=DecisionReadiness(
             decision_id="dec_api",
             overall_score=0.72,
@@ -185,3 +201,80 @@ def test_replay_decision_payload_is_json_safe():
         decision_payload["case"]["candidates"][0],
         dict,
     )
+
+
+def test_replay_exposes_decision_sensitivity():
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_sensitivity_api",
+            question="Choose A or B",
+            candidates=[
+                Candidate(
+                    candidate_id="cand_a",
+                    name="A",
+                ),
+                Candidate(
+                    candidate_id="cand_b",
+                    name="B",
+                ),
+            ],
+        ),
+        decision_sensitivity=[
+            SensitivityResult(
+                decision_id="dec_sensitivity_api",
+                criterion_id="crit_scale",
+                baseline_weight=0.30,
+                baseline_winner_id="cand_a",
+                score_margin_before=0.60,
+                recommendation_changes=True,
+                switch_threshold=0.38,
+                weight_delta=0.08,
+                direction_of_change="increase",
+                competing_candidate_id="cand_b",
+                score_margin_after=-0.04,
+            )
+        ],
+    )
+
+    payload = _build_research_replay(
+        "research_sensitivity",
+        state,
+    )
+
+    decision_payload = payload["decision"]
+
+    assert decision_payload is not None
+    assert len(decision_payload["sensitivity"]) == 1
+
+    sensitivity = decision_payload["sensitivity"][0]
+
+    assert sensitivity["decision_id"] == "dec_sensitivity_api"
+    assert sensitivity["criterion_id"] == "crit_scale"
+    assert sensitivity["baseline_weight"] == 0.30
+    assert sensitivity["baseline_winner_id"] == "cand_a"
+    assert sensitivity["score_margin_before"] == 0.60
+    assert sensitivity["recommendation_changes"] is True
+    assert sensitivity["switch_threshold"] == 0.38
+    assert sensitivity["weight_delta"] == 0.08
+    assert sensitivity["direction_of_change"] == "increase"
+    assert sensitivity["competing_candidate_id"] == "cand_b"
+    assert sensitivity["score_margin_after"] == -0.04
+
+
+def test_replay_uses_empty_sensitivity_list_by_default():
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_empty_sensitivity",
+            question="Choose A or B",
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_empty_sensitivity",
+        state,
+    )
+
+    assert payload["decision"] is not None
+    assert payload["decision"]["sensitivity"] == []

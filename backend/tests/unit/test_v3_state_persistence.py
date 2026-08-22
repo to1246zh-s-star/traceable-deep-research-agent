@@ -9,6 +9,7 @@ from models import (
     ResearchBudget,
     ResearchStoppingDecision,
     ResearchUsage,
+    SensitivityResult,
     SummaryState,
 )
 from services.research_store import SQLiteResearchStore
@@ -75,6 +76,21 @@ def make_v3_state() -> SummaryState:
         research_topic="Qdrant vs Milvus",
         decision_case=decision,
         decision_evaluation=evaluation,
+        decision_sensitivity=[
+            SensitivityResult(
+                decision_id=decision.decision_id,
+                criterion_id="crit_scale",
+                baseline_weight=0.3,
+                baseline_winner_id="cand_qdrant",
+                score_margin_before=0.6,
+                recommendation_changes=True,
+                switch_threshold=0.38,
+                weight_delta=0.08,
+                direction_of_change="increase",
+                competing_candidate_id="cand_milvus",
+                score_margin_after=-0.04,
+            )
+        ],
         adaptive_research_state=AdaptiveResearchState(
             decision_id=decision.decision_id,
             iteration_count=2,
@@ -174,6 +190,7 @@ def test_existing_v2_state_loads_with_empty_v3_defaults(tmp_path):
     assert restored.decision_case is None
     assert restored.decision_evaluation is None
     assert restored.decision_comparison is None
+    assert restored.decision_sensitivity == []
     assert restored.atomic_claims == []
     assert restored.evidence_assessments == []
     assert restored.evidence_signals == []
@@ -217,3 +234,26 @@ def test_schema_migrates_existing_research_runs_table(tmp_path):
     connection.close()
 
     assert "v3_state_json" in columns
+
+
+def test_sqlite_persists_decision_sensitivity(tmp_path):
+    db_path = tmp_path / "sensitivity.db"
+
+    store = SQLiteResearchStore(db_path)
+
+    original = make_v3_state()
+
+    research_id = store.save(original)
+    restored = SQLiteResearchStore(db_path).get(research_id)
+
+    assert restored is not None
+    assert len(restored.decision_sensitivity) == 1
+
+    sensitivity = restored.decision_sensitivity[0]
+
+    assert isinstance(sensitivity, SensitivityResult)
+    assert sensitivity.criterion_id == "crit_scale"
+    assert sensitivity.baseline_winner_id == "cand_qdrant"
+    assert sensitivity.recommendation_changes is True
+    assert sensitivity.switch_threshold == 0.38
+    assert sensitivity.competing_candidate_id == "cand_milvus"

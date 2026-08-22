@@ -262,6 +262,9 @@ def _serialize_decision_intelligence(
         "comparison": _serialize_v3_value(
             state.decision_comparison
         ),
+        "sensitivity": _serialize_v3_value(
+            state.decision_sensitivity
+        ),
         "readiness": _serialize_v3_value(
             state.decision_readiness
         ),
