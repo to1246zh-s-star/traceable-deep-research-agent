@@ -382,3 +382,46 @@ def test_research_budget_blocks_when_task_budget_exhausted():
     assert iteration is None
     assert tasks == []
     assert state.status == "budget_exhausted"
+
+
+def test_selects_decision_impact_before_raw_severity():
+    analysis = ResearchAnalysis(
+        decision_id="dec_test",
+        research_gaps=[
+            ResearchGap(
+                gap_id="gap_low_impact",
+                candidate_id="cand_test",
+                criterion_id="crit_test",
+                gap_type="low_coverage",
+                severity=0.95,
+                description="Low impact",
+                suggested_query="low impact query",
+                decision_impact="LOW",
+                priority=1,
+            ),
+            ResearchGap(
+                gap_id="gap_high_impact",
+                candidate_id="cand_test",
+                criterion_id="crit_test",
+                gap_type="low_coverage",
+                severity=0.40,
+                description="High impact",
+                suggested_query="high impact query",
+                decision_impact="HIGH",
+                priority=3,
+            ),
+        ],
+    )
+
+    state = AdaptiveResearchState(
+        decision_id="dec_test",
+    )
+
+    selected = select_research_gaps(
+        analysis,
+        state,
+        max_tasks=1,
+    )
+
+    assert len(selected) == 1
+    assert selected[0].gap_id == "gap_high_impact"

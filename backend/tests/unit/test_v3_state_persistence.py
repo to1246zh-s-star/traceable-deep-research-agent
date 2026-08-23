@@ -383,3 +383,66 @@ def test_sqlite_persists_recommendation_robustness(tmp_path):
         robustness.unstable_criterion_ids
         == ["crit_ops"]
     )
+
+
+def test_sqlite_persists_decision_impact_gap_fields(tmp_path):
+    from models import (
+        ResearchAnalysis,
+        ResearchGap,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        research_analysis=ResearchAnalysis(
+            decision_id="dec_gap",
+            status="gaps_detected",
+            research_gaps=[
+                ResearchGap(
+                    gap_id="gap_impact",
+                    candidate_id="cand_a",
+                    criterion_id="crit_ops",
+                    gap_type="low_coverage",
+                    severity=0.7,
+                    description="Need evidence",
+                    suggested_query=(
+                        "A operations Docker-only"
+                    ),
+                    decision_impact="HIGH",
+                    priority=3,
+                    impact_reasons=[
+                        "Near-flip criterion"
+                    ],
+                    context_dimensions=[
+                        "deployment_environment"
+                    ],
+                )
+            ],
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    assert restored is not None
+    assert restored.research_analysis is not None
+
+    gap = (
+        restored.research_analysis
+        .research_gaps[0]
+    )
+
+    assert gap.decision_impact == "HIGH"
+    assert gap.priority == 3
+    assert gap.impact_reasons == [
+        "Near-flip criterion"
+    ]
+    assert gap.context_dimensions == [
+        "deployment_environment"
+    ]

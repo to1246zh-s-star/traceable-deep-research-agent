@@ -505,6 +505,13 @@ class ResearchGap:
     description: str
     suggested_query: Optional[str] = field(default=None)
 
+    # Phase 17.5 decision-impact enrichment.
+    # priority is ordinal routing metadata, not a probability.
+    decision_impact: str = field(default="UNKNOWN")
+    priority: int = field(default=0)
+    impact_reasons: list[str] = field(default_factory=list)
+    context_dimensions: list[str] = field(default_factory=list)
+
     status: str = field(default="open")
 
 

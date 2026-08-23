@@ -556,3 +556,103 @@ def test_decision_pipeline_stores_recommendation_robustness():
         "FRAGILE",
     }
 
+
+
+def test_pipeline_enriches_gap_decision_impact():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+        TechnicalContext,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_gap_pipeline",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_ops",
+                fitness_score=6.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+        technical_context=TechnicalContext(
+            deployment_environment=[
+                "Docker-only"
+            ]
+        ),
+    )
+
+    assert state.research_analysis is not None
+
+    gaps = state.research_analysis.research_gaps
+
+    assert gaps
+
+    assert all(
+        gap.decision_impact
+        in {
+            "HIGH",
+            "MEDIUM",
+            "LOW",
+            "UNKNOWN",
+        }
+        for gap in gaps
+    )
+
+    winner_gaps = [
+        gap
+        for gap in gaps
+        if gap.candidate_id == "cand_a"
+    ]
+
+    assert winner_gaps
+
+    assert all(
+        gap.priority >= 2
+        for gap in winner_gaps
+    )
+
+    assert all(
+        "Docker-only"
+        in (gap.suggested_query or "")
+        for gap in gaps
+    )

@@ -52,6 +52,7 @@ def select_research_gaps(
     for gap in sorted(
         analysis.research_gaps,
         key=lambda item: (
+            -item.priority,
             -item.severity,
             item.gap_id,
         ),
