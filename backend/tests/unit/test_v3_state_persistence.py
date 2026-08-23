@@ -566,3 +566,78 @@ def test_sqlite_persists_decision_assumptions(tmp_path):
     assert item.assumption_id == "asm_test"
     assert item.decision_impact == "HIGH"
     assert item.source_value == "Docker-only"
+
+
+def test_sqlite_persists_decision_counterfactuals(tmp_path):
+    from models import (
+        DecisionCounterfactual,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        decision_counterfactuals=[
+            DecisionCounterfactual(
+                counterfactual_id="cf_test",
+                decision_id="dec_test",
+                assumption_id="asm_test",
+                statement=(
+                    "If Docker-only no longer holds, "
+                    "re-evaluate the decision."
+                ),
+                assumption_type="CONTEXT",
+                source_field=(
+                    "deployment_environment"
+                ),
+                source_value="Docker-only",
+                affected_candidate_ids=[
+                    "cand_a",
+                    "cand_b",
+                ],
+                affected_dimensions=[
+                    "architecture_fit",
+                    "integration",
+                ],
+                recommendation_instability="HIGH",
+                reevaluation_required=True,
+                rationale=[
+                    "Architecture depends on context."
+                ],
+            )
+        ]
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    assert restored is not None
+
+    assert len(
+        restored.decision_counterfactuals
+    ) == 1
+
+    item = (
+        restored
+        .decision_counterfactuals[0]
+    )
+
+    assert item.counterfactual_id == "cf_test"
+    assert item.assumption_id == "asm_test"
+
+    assert (
+        item.recommendation_instability
+        == "HIGH"
+    )
+
+    assert item.reevaluation_required is True
+
+    assert item.affected_dimensions == [
+        "architecture_fit",
+        "integration",
+    ]

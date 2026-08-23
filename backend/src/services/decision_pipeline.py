@@ -26,6 +26,7 @@ from services.research_analysis import analyze_research
 from services.recommendation_robustness import analyze_recommendation_robustness
 from services.decision_impact_gaps import enrich_research_gaps_with_decision_impact
 from services.decision_assumptions import analyze_decision_assumptions
+from services.decision_counterfactuals import analyze_decision_counterfactuals
 from services.expected_decision_impact import decompose_expected_decision_impact
 from services.research_stopping import should_continue_research
 
@@ -151,6 +152,12 @@ def run_decision_pipeline(
         ),
     )
 
+    counterfactuals = analyze_decision_counterfactuals(
+        decision,
+        assumptions,
+        robustness,
+    )
+
     analysis = enrich_research_gaps_with_decision_impact(
         decision,
         analysis,
@@ -221,6 +228,7 @@ def run_decision_pipeline(
     state.decision_comparison = comparison
     state.decision_sensitivity = sensitivity
     state.decision_assumptions = assumptions
+    state.decision_counterfactuals = counterfactuals
     state.recommendation_robustness = robustness
 
     state.evidence_signals = list(evidence_signals)

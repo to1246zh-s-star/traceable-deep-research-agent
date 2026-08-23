@@ -489,6 +489,35 @@ class EvidenceConflict:
 
 
 @dataclass(kw_only=True)
+class DecisionCounterfactual:
+    """Deterministic counterfactual derived from an explicit assumption."""
+
+    counterfactual_id: str = field(
+        default_factory=lambda: f"cf_{uuid.uuid4().hex[:12]}"
+    )
+
+    decision_id: str
+    assumption_id: str
+
+    statement: str
+    assumption_type: str
+
+    source_field: Optional[str] = field(default=None)
+    source_value: Optional[str] = field(default=None)
+
+    affected_candidate_ids: list[str] = field(default_factory=list)
+    affected_criterion_ids: list[str] = field(default_factory=list)
+    affected_dimensions: list[str] = field(default_factory=list)
+
+    recommendation_instability: str = field(default="UNKNOWN")
+
+    # None means unresolved/unknown, never silently equivalent to False.
+    reevaluation_required: Optional[bool] = field(default=None)
+
+    rationale: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class DecisionAssumption:
     """Explicit assumption underlying the current technical decision."""
 
@@ -772,6 +801,7 @@ class SummaryState:
     decision_comparison: Optional[DecisionComparison] = field(default=None)
     decision_sensitivity: list[SensitivityResult] = field(default_factory=list)
     decision_assumptions: list[DecisionAssumption] = field(default_factory=list)
+    decision_counterfactuals: list[DecisionCounterfactual] = field(default_factory=list)
     recommendation_robustness: Optional[RecommendationRobustness] = field(
         default=None
     )
