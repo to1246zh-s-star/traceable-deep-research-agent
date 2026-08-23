@@ -52,7 +52,8 @@ from models import (
     RecommendationRobustness,
     ExpectedDecisionImpact,
     DecisionAssumption,
-    DecisionCounterfactual,)
+    DecisionCounterfactual,
+    DecisionScenario,)
 
 
 V3_MODEL_TYPES = {
@@ -70,6 +71,7 @@ V3_MODEL_TYPES = {
         DecisionCase,
         DecisionAssumption,
         DecisionCounterfactual,
+        DecisionScenario,
         DecisionComparison,
         DecisionCriterion,
         DecisionEvaluation,
@@ -106,6 +108,7 @@ V3_STATE_FIELDS = (
     "decision_sensitivity",
     "decision_assumptions",
     "decision_counterfactuals",
+    "decision_scenarios",
     "recommendation_robustness",
     "atomic_claims",
     "evidence_assessments",

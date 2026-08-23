@@ -641,3 +641,72 @@ def test_sqlite_persists_decision_counterfactuals(tmp_path):
         "architecture_fit",
         "integration",
     ]
+
+
+def test_sqlite_persists_decision_scenarios(tmp_path):
+    from models import (
+        DecisionScenario,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        decision_scenarios=[
+            DecisionScenario(
+                scenario_id="scn_test",
+                decision_id="dec_test",
+                scenario_type="ARCHITECTURE",
+                title="Architecture context changes",
+                counterfactual_ids=[
+                    "cf_1",
+                    "cf_2",
+                ],
+                assumption_ids=[
+                    "asm_1",
+                    "asm_2",
+                ],
+                affected_candidate_ids=[
+                    "cand_a",
+                    "cand_b",
+                ],
+                affected_dimensions=[
+                    "architecture_fit",
+                    "integration",
+                    "operations",
+                ],
+                scenario_instability="HIGH",
+                reevaluation_required=True,
+                rationale=[
+                    "Architecture assumptions changed."
+                ],
+            )
+        ]
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    assert restored is not None
+
+    assert len(
+        restored.decision_scenarios
+    ) == 1
+
+    item = restored.decision_scenarios[0]
+
+    assert item.scenario_id == "scn_test"
+    assert item.scenario_type == "ARCHITECTURE"
+
+    assert item.counterfactual_ids == [
+        "cf_1",
+        "cf_2",
+    ]
+
+    assert item.scenario_instability == "HIGH"
+    assert item.reevaluation_required is True

@@ -489,6 +489,31 @@ class EvidenceConflict:
 
 
 @dataclass(kw_only=True)
+class DecisionScenario:
+    """Bounded scenario composed from existing decision counterfactuals."""
+
+    scenario_id: str
+    decision_id: str
+
+    scenario_type: str
+    title: str
+
+    counterfactual_ids: list[str] = field(default_factory=list)
+    assumption_ids: list[str] = field(default_factory=list)
+
+    affected_candidate_ids: list[str] = field(default_factory=list)
+    affected_criterion_ids: list[str] = field(default_factory=list)
+    affected_dimensions: list[str] = field(default_factory=list)
+
+    scenario_instability: str = field(default="UNKNOWN")
+
+    # None means unresolved, never equivalent to False.
+    reevaluation_required: Optional[bool] = field(default=None)
+
+    rationale: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class DecisionCounterfactual:
     """Deterministic counterfactual derived from an explicit assumption."""
 
@@ -802,6 +827,7 @@ class SummaryState:
     decision_sensitivity: list[SensitivityResult] = field(default_factory=list)
     decision_assumptions: list[DecisionAssumption] = field(default_factory=list)
     decision_counterfactuals: list[DecisionCounterfactual] = field(default_factory=list)
+    decision_scenarios: list[DecisionScenario] = field(default_factory=list)
     recommendation_robustness: Optional[RecommendationRobustness] = field(
         default=None
     )
