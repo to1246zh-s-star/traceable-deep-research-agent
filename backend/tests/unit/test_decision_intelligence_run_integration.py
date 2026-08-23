@@ -1,4 +1,5 @@
 from agent import DeepResearchAgent
+from config import Configuration
 from models import (
     DecisionCase,
     SummaryState,
@@ -30,6 +31,10 @@ class StubReporting:
 def make_agent():
     agent = object.__new__(DeepResearchAgent)
 
+    agent.config = Configuration(
+        enable_notes=False,
+        max_concurrent_research_tasks=1,
+    )
     agent.planner = StubPlanner()
     agent.reporting = StubReporting()
 

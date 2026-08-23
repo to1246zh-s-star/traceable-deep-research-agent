@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import re
 from datetime import datetime, timezone
@@ -199,6 +200,13 @@ class DeepResearchAgent:
             self.config,
         )
         self._last_search_notices: list[str] = []
+        # Temporary sidecars used only by bounded initial-task
+        # parallel execution. They are never persisted as business state.
+        self._parallel_context_buffer: dict[
+            int,
+            tuple[str, str],
+        ] | None = None
+        self._parallel_loop_counts: dict[int, int] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -626,6 +634,199 @@ class DeepResearchAgent:
 
         return decision
 
+    def _execute_initial_tasks(
+        self,
+        state: SummaryState,
+    ) -> None:
+        """Execute initial research TODOs with bounded concurrency."""
+
+        tasks = list(state.todo_items)
+
+        if not tasks:
+            return
+
+        configured_workers = int(
+            getattr(
+                self.config,
+                "max_concurrent_research_tasks",
+                1,
+            )
+        )
+
+        max_workers = max(
+            1,
+            min(
+                configured_workers,
+                len(tasks),
+            ),
+        )
+
+        # Preserve exact serial behavior when concurrency is disabled.
+        if max_workers <= 1 or len(tasks) <= 1:
+            for task in tasks:
+                for _ in self._execute_task(
+                    state,
+                    task,
+                    emit_stream=False,
+                ):
+                    pass
+            return
+
+        task_order = {
+            task.id: index
+            for index, task
+            in enumerate(tasks)
+        }
+
+        base_loop_count = (
+            state.research_loop_count
+        )
+
+        self._parallel_context_buffer = {}
+        self._parallel_loop_counts = {
+            task.id: (
+                base_loop_count
+                + index
+            )
+            for index, task
+            in enumerate(tasks)
+        }
+
+        def worker(
+            task: TodoItem,
+        ) -> None:
+            for _ in self._execute_task(
+                state,
+                task,
+                emit_stream=False,
+            ):
+                pass
+
+        try:
+            with ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix=(
+                    "research-task"
+                ),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(
+                        worker,
+                        task,
+                    ): task
+                    for task in tasks
+                }
+
+                for future in as_completed(
+                    future_to_task
+                ):
+                    task = (
+                        future_to_task[
+                            future
+                        ]
+                    )
+
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        # _execute_task already records the failed task
+                        # and trace. Isolate failure so independent tasks
+                        # can still complete.
+                        logger.exception(
+                            (
+                                "Initial research task %s "
+                                "failed independently"
+                            ),
+                            task.id,
+                            exc_info=exc,
+                        )
+
+            self._merge_parallel_task_state(
+                state,
+                tasks,
+                task_order,
+            )
+
+        finally:
+            self._parallel_context_buffer = None
+            self._parallel_loop_counts = None
+
+    def _merge_parallel_task_state(
+        self,
+        state: SummaryState,
+        tasks: list[TodoItem],
+        task_order: dict[int, int],
+    ) -> None:
+        """Restore deterministic task ordering after parallel execution."""
+
+        fallback_order = len(
+            task_order
+        )
+
+        with self._state_lock:
+            context_buffer = (
+                self._parallel_context_buffer
+                or {}
+            )
+
+            for task in tasks:
+                buffered = (
+                    context_buffer.get(
+                        task.id
+                    )
+                )
+
+                if buffered is None:
+                    continue
+
+                (
+                    context,
+                    sources_summary,
+                ) = buffered
+
+                state.web_research_results.append(
+                    context
+                )
+                state.sources_gathered.append(
+                    sources_summary
+                )
+
+            state.evidence_items.sort(
+                key=lambda item: (
+                    task_order.get(
+                        item.task_id,
+                        fallback_order,
+                    ),
+                    (
+                        item.source_rank
+                        if item.source_rank
+                        is not None
+                        else 10**9
+                    ),
+                    item.evidence_id,
+                )
+            )
+
+            state.claims.sort(
+                key=lambda item: (
+                    task_order.get(
+                        item.task_id,
+                        fallback_order,
+                    ),
+                    item.claim_id,
+                )
+            )
+
+            state.execution_traces.sort(
+                key=lambda item: (
+                    task_order.get(
+                        item.task_id,
+                        fallback_order,
+                    ),
+                    item.trace_id,
+                )
+            )
+
     def run(self, topic: str) -> SummaryStateOutput:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
@@ -638,9 +839,9 @@ class DeepResearchAgent:
             logger.info("No TODO items generated; falling back to single task")
             state.todo_items = [self.planner.create_fallback_task(state)]
 
-        for task in state.todo_items:
-            for _ in self._execute_task(state, task, emit_stream=False):
-                pass
+        self._execute_initial_tasks(
+            state
+        )
 
         if state.decision_case is not None:
             try:
@@ -1103,10 +1304,25 @@ class DeepResearchAgent:
                 stage="search",
             )
 
+            parallel_loop_counts = getattr(
+                self,
+                "_parallel_loop_counts",
+                None,
+            )
+
+            search_loop_count = (
+                parallel_loop_counts.get(
+                    task.id,
+                    state.research_loop_count,
+                )
+                if parallel_loop_counts is not None
+                else state.research_loop_count
+            )
+
             search_result, notices, answer_text, backend = dispatch_search(
                 task.query,
                 self.config,
-                state.research_loop_count,
+                search_loop_count,
             )
 
             self._emit_execution_event(
@@ -1233,8 +1449,27 @@ class DeepResearchAgent:
         task.sources_summary = sources_summary
 
         with self._state_lock:
-            state.web_research_results.append(context)
-            state.sources_gathered.append(sources_summary)
+            parallel_context_buffer = getattr(
+                self,
+                "_parallel_context_buffer",
+                None,
+            )
+
+            if parallel_context_buffer is None:
+                state.web_research_results.append(
+                    context
+                )
+                state.sources_gathered.append(
+                    sources_summary
+                )
+            else:
+                parallel_context_buffer[
+                    task.id
+                ] = (
+                    context,
+                    sources_summary,
+                )
+
             state.research_loop_count += 1
 
         summary_text: str | None = None

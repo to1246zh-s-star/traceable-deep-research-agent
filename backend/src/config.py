@@ -24,6 +24,16 @@ class Configuration(BaseModel):
         title="Research Depth",
         description="Number of research iterations to perform",
     )
+    max_concurrent_research_tasks: int = Field(
+        default=3,
+        ge=1,
+        le=8,
+        title="Maximum Concurrent Research Tasks",
+        description=(
+            "Maximum number of initial non-streaming research "
+            "tasks executed concurrently"
+        ),
+    )
     local_llm: str = Field(
         default="llama3.2",
         title="Local Model Name",
