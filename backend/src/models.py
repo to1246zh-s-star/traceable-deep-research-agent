@@ -489,6 +489,32 @@ class EvidenceConflict:
 
 
 @dataclass(kw_only=True)
+class DecisionReevaluationTrigger:
+    """Deterministic trigger describing when decision intelligence is stale."""
+
+    trigger_id: str
+    decision_id: str
+
+    trigger_type: str
+    source_type: str
+    source_field: Optional[str] = field(default=None)
+    source_value: Optional[str] = field(default=None)
+
+    affected_candidate_ids: list[str] = field(default_factory=list)
+    affected_criterion_ids: list[str] = field(default_factory=list)
+    affected_scenario_ids: list[str] = field(default_factory=list)
+
+    invalidated_modules: list[str] = field(default_factory=list)
+
+    trigger_impact: str = field(default="UNKNOWN")
+
+    # None means insufficient information; never equivalent to False.
+    reevaluation_required: Optional[bool] = field(default=None)
+
+    rationale: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class DecisionScenario:
     """Bounded scenario composed from existing decision counterfactuals."""
 
@@ -828,6 +854,7 @@ class SummaryState:
     decision_assumptions: list[DecisionAssumption] = field(default_factory=list)
     decision_counterfactuals: list[DecisionCounterfactual] = field(default_factory=list)
     decision_scenarios: list[DecisionScenario] = field(default_factory=list)
+    decision_reevaluation_triggers: list[DecisionReevaluationTrigger] = field(default_factory=list)
     recommendation_robustness: Optional[RecommendationRobustness] = field(
         default=None
     )

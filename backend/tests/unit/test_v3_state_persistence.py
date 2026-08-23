@@ -710,3 +710,82 @@ def test_sqlite_persists_decision_scenarios(tmp_path):
 
     assert item.scenario_instability == "HIGH"
     assert item.reevaluation_required is True
+
+
+def test_sqlite_persists_reevaluation_triggers(tmp_path):
+    from models import (
+        DecisionReevaluationTrigger,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        decision_reevaluation_triggers=[
+            DecisionReevaluationTrigger(
+                trigger_id="trg_test",
+                decision_id="dec_test",
+                trigger_type=(
+                    "TECHNICAL_CONTEXT_CHANGE"
+                ),
+                source_type="technical_context",
+                source_field=(
+                    "deployment_environment"
+                ),
+                source_value="Docker-only",
+                affected_candidate_ids=[
+                    "cand_a",
+                    "cand_b",
+                ],
+                affected_scenario_ids=[
+                    "scn_arch"
+                ],
+                invalidated_modules=[
+                    "integration_assessment",
+                    "scenario_analysis",
+                ],
+                trigger_impact="HIGH",
+                reevaluation_required=True,
+                rationale=[
+                    "Deployment context changed."
+                ],
+            )
+        ]
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    assert restored is not None
+
+    assert len(
+        restored.decision_reevaluation_triggers
+    ) == 1
+
+    item = (
+        restored
+        .decision_reevaluation_triggers[0]
+    )
+
+    assert item.trigger_id == "trg_test"
+
+    assert (
+        item.trigger_type
+        == "TECHNICAL_CONTEXT_CHANGE"
+    )
+
+    assert (
+        item.invalidated_modules
+        == [
+            "integration_assessment",
+            "scenario_analysis",
+        ]
+    )
+
+    assert item.trigger_impact == "HIGH"
+    assert item.reevaluation_required is True
