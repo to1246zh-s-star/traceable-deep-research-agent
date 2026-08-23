@@ -512,3 +512,57 @@ def test_sqlite_persists_expected_decision_impact(tmp_path):
     assert impact.drivers == [
         "Ranking sensitive"
     ]
+
+
+def test_sqlite_persists_decision_assumptions(tmp_path):
+    from models import (
+        DecisionAssumption,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        decision_assumptions=[
+            DecisionAssumption(
+                assumption_id="asm_test",
+                decision_id="dec_test",
+                text=(
+                    "Deployment environment remains "
+                    "Docker-only."
+                ),
+                assumption_type="CONTEXT",
+                source_type="technical_context",
+                source_field=(
+                    "deployment_environment"
+                ),
+                source_value="Docker-only",
+                affected_candidate_ids=[
+                    "cand_a",
+                    "cand_b",
+                ],
+                change_sensitivity="MEDIUM",
+                decision_impact="HIGH",
+                rationale="Context-dependent fit.",
+            )
+        ]
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    assert restored is not None
+    assert len(
+        restored.decision_assumptions
+    ) == 1
+
+    item = restored.decision_assumptions[0]
+
+    assert item.assumption_id == "asm_test"
+    assert item.decision_impact == "HIGH"
+    assert item.source_value == "Docker-only"

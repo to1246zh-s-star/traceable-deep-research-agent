@@ -489,6 +489,31 @@ class EvidenceConflict:
 
 
 @dataclass(kw_only=True)
+class DecisionAssumption:
+    """Explicit assumption underlying the current technical decision."""
+
+    assumption_id: str = field(
+        default_factory=lambda: f"asm_{uuid.uuid4().hex[:12]}"
+    )
+
+    decision_id: str
+    text: str
+
+    assumption_type: str
+    source_type: str
+    source_field: Optional[str] = field(default=None)
+    source_value: Optional[str] = field(default=None)
+
+    affected_candidate_ids: list[str] = field(default_factory=list)
+    affected_criterion_ids: list[str] = field(default_factory=list)
+
+    change_sensitivity: str = field(default="UNKNOWN")
+    decision_impact: str = field(default="UNKNOWN")
+
+    rationale: Optional[str] = field(default=None)
+
+
+@dataclass(kw_only=True)
 class ExpectedDecisionImpact:
     """Explainable deterministic impact decomposition for one research gap."""
 
@@ -746,6 +771,7 @@ class SummaryState:
     decision_evaluation: Optional[DecisionEvaluation] = field(default=None)
     decision_comparison: Optional[DecisionComparison] = field(default=None)
     decision_sensitivity: list[SensitivityResult] = field(default_factory=list)
+    decision_assumptions: list[DecisionAssumption] = field(default_factory=list)
     recommendation_robustness: Optional[RecommendationRobustness] = field(
         default=None
     )

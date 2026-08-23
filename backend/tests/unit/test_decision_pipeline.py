@@ -731,3 +731,231 @@ def test_pipeline_attaches_expected_decision_impact():
             "LOW",
             "UNKNOWN",
         }
+
+
+def test_pipeline_stores_decision_assumptions():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+        TechnicalContext,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_assumption_pipeline",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_ops",
+                fitness_score=6.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+        technical_context=TechnicalContext(
+            deployment_environment=[
+                "Docker-only"
+            ]
+        ),
+    )
+
+    assert state.decision_assumptions
+
+    assert any(
+        item.assumption_type == "CONTEXT"
+        for item in state.decision_assumptions
+    )
+
+    assert any(
+        item.assumption_type == "PRIORITY"
+        for item in state.decision_assumptions
+    )
+
+
+def test_pipeline_stores_decision_assumptions():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+        TechnicalContext,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_assumption_pipeline",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_ops",
+                fitness_score=6.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+        technical_context=TechnicalContext(
+            deployment_environment=[
+                "Docker-only"
+            ]
+        ),
+    )
+
+    assert state.decision_assumptions
+
+    assert any(
+        item.assumption_type == "CONTEXT"
+        for item in state.decision_assumptions
+    )
+
+    assert any(
+        item.assumption_type == "PRIORITY"
+        for item in state.decision_assumptions
+    )
+
+
+def test_pipeline_stores_decision_assumptions():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+        TechnicalContext,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_assumption_pipeline",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_ops",
+                fitness_score=6.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+        technical_context=TechnicalContext(
+            deployment_environment=[
+                "Docker-only"
+            ]
+        ),
+    )
+
+    assert state.decision_assumptions
+
+    assert any(
+        item.assumption_type == "CONTEXT"
+        for item in state.decision_assumptions
+    )
+
+    assert any(
+        item.assumption_type == "PRIORITY"
+        for item in state.decision_assumptions
+    )

@@ -50,7 +50,8 @@ from models import (
     TodoItem,
 
     RecommendationRobustness,
-    ExpectedDecisionImpact,)
+    ExpectedDecisionImpact,
+    DecisionAssumption,)
 
 
 V3_MODEL_TYPES = {
@@ -66,6 +67,7 @@ V3_MODEL_TYPES = {
         Constraint,
         CriterionCoverage,
         DecisionCase,
+        DecisionAssumption,
         DecisionComparison,
         DecisionCriterion,
         DecisionEvaluation,
@@ -100,6 +102,7 @@ V3_STATE_FIELDS = (
     "decision_evaluation",
     "decision_comparison",
     "decision_sensitivity",
+    "decision_assumptions",
     "recommendation_robustness",
     "atomic_claims",
     "evidence_assessments",
