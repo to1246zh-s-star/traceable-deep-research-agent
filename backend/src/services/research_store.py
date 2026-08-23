@@ -49,7 +49,8 @@ from models import (
     TechnicalContext,
     TodoItem,
 
-    RecommendationRobustness,)
+    RecommendationRobustness,
+    ExpectedDecisionImpact,)
 
 
 V3_MODEL_TYPES = {
@@ -76,6 +77,7 @@ V3_MODEL_TYPES = {
         EvidenceConflict,
         EvidenceQuality,
         EvidenceSignal,
+        ExpectedDecisionImpact,
         IntegrationAssessment,
         ReadinessSnapshot,
         Requirement,

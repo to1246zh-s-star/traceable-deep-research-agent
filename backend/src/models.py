@@ -489,6 +489,25 @@ class EvidenceConflict:
 
 
 @dataclass(kw_only=True)
+class ExpectedDecisionImpact:
+    """Explainable deterministic impact decomposition for one research gap."""
+
+    decision_id: str
+    gap_id: str
+
+    overall_impact: str = field(default="UNKNOWN")
+
+    ranking_impact: str = field(default="UNKNOWN")
+    constraint_impact: str = field(default="UNKNOWN")
+    architecture_impact: str = field(default="UNKNOWN")
+    conflict_resolution_impact: str = field(default="UNKNOWN")
+    readiness_impact: str = field(default="UNKNOWN")
+    robustness_impact: str = field(default="UNKNOWN")
+
+    drivers: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class ResearchGap:
     """Missing or weak research discovered during evaluation."""
 
@@ -511,6 +530,10 @@ class ResearchGap:
     priority: int = field(default=0)
     impact_reasons: list[str] = field(default_factory=list)
     context_dimensions: list[str] = field(default_factory=list)
+
+    expected_decision_impact: Optional[ExpectedDecisionImpact] = field(
+        default=None
+    )
 
     status: str = field(default="open")
 

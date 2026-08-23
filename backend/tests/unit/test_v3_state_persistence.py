@@ -446,3 +446,69 @@ def test_sqlite_persists_decision_impact_gap_fields(tmp_path):
     assert gap.context_dimensions == [
         "deployment_environment"
     ]
+
+
+def test_sqlite_persists_expected_decision_impact(tmp_path):
+    from models import (
+        ExpectedDecisionImpact,
+        ResearchAnalysis,
+        ResearchGap,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        research_analysis=ResearchAnalysis(
+            decision_id="dec_impact",
+            research_gaps=[
+                ResearchGap(
+                    gap_id="gap_expected",
+                    candidate_id="cand_a",
+                    criterion_id="crit_ops",
+                    gap_type="low_coverage",
+                    severity=0.8,
+                    description="Need evidence",
+                    expected_decision_impact=(
+                        ExpectedDecisionImpact(
+                            decision_id="dec_impact",
+                            gap_id="gap_expected",
+                            overall_impact="HIGH",
+                            ranking_impact="HIGH",
+                            constraint_impact="LOW",
+                            architecture_impact="MEDIUM",
+                            conflict_resolution_impact="LOW",
+                            readiness_impact="HIGH",
+                            robustness_impact="MEDIUM",
+                            drivers=[
+                                "Ranking sensitive"
+                            ],
+                        )
+                    ),
+                )
+            ],
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+    restored = store.get(research_id)
+
+    impact = (
+        restored
+        .research_analysis
+        .research_gaps[0]
+        .expected_decision_impact
+    )
+
+    assert impact is not None
+    assert impact.overall_impact == "HIGH"
+    assert impact.ranking_impact == "HIGH"
+    assert impact.readiness_impact == "HIGH"
+    assert impact.drivers == [
+        "Ranking sensitive"
+    ]

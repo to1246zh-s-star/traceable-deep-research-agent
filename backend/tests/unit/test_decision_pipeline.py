@@ -656,3 +656,78 @@ def test_pipeline_enriches_gap_decision_impact():
         in (gap.suggested_query or "")
         for gap in gaps
     )
+
+
+def test_pipeline_attaches_expected_decision_impact():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_expected_impact",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_ops",
+                name="Operations",
+                weight=1.0,
+            ),
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_ops",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_ops",
+                fitness_score=6.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+    )
+
+    gaps = state.research_analysis.research_gaps
+
+    assert gaps
+
+    for item in gaps:
+        impact = item.expected_decision_impact
+
+        assert impact is not None
+        assert impact.gap_id == item.gap_id
+
+        assert impact.overall_impact in {
+            "HIGH",
+            "MEDIUM",
+            "LOW",
+            "UNKNOWN",
+        }
