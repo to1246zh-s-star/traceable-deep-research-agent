@@ -1122,6 +1122,12 @@ class DeepResearchAgent:
                     )
                     if search_result
                     else 0,
+                    "degraded": bool(
+                        search_result.get("degraded")
+                    )
+                    if search_result
+                    else False,
+                    "notice_count": len(notices),
                 },
             )
         except Exception as exc:

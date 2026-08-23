@@ -167,3 +167,79 @@ def test_summary_failure_generates_failed_event(monkeypatch):
     ]
 
     assert "task_failed" in event_types
+
+
+def test_degraded_empty_search_is_skipped_not_failed(
+    monkeypatch,
+):
+    from agent import DeepResearchAgent
+    from config import Configuration
+    from models import SummaryState, TodoItem
+
+    research_agent = DeepResearchAgent(
+        Configuration(
+            enable_notes=False,
+        )
+    )
+
+    def fake_dispatch_search(
+        query,
+        config,
+        loop_count,
+    ):
+        return (
+            {
+                "results": [],
+                "backend": "tavily",
+                "answer": None,
+                "notices": [
+                    "provider degraded"
+                ],
+                "degraded": True,
+                "error_type": "TimeoutError",
+            },
+            [
+                "provider degraded"
+            ],
+            None,
+            "tavily",
+        )
+
+    monkeypatch.setattr(
+        "agent.dispatch_search",
+        fake_dispatch_search,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B"
+    )
+
+    task = TodoItem(
+        id=1,
+        title="Search",
+        intent="Find evidence",
+        query="A benchmark",
+    )
+
+    list(
+        research_agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
+        )
+    )
+
+    assert task.status == "skipped"
+    assert task.notices == [
+        "provider degraded"
+    ]
+
+    assert len(
+        state.execution_traces
+    ) == 1
+
+    trace = state.execution_traces[0]
+
+    assert trace.status == "skipped"
+    assert trace.error_type is None
+    assert trace.error_message is None
