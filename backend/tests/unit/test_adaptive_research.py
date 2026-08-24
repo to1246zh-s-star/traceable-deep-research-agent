@@ -464,3 +464,95 @@ def test_followup_task_preserves_search_strategy_query():
         "official documentation "
         "benchmark performance"
     )
+
+
+def test_strategy_full_gap_is_not_actionable():
+    gap_item = ResearchGap(
+        gap_id="gap_full_strategy",
+        candidate_id="cand_a",
+        criterion_id="crit_scale",
+        gap_type="low_coverage",
+        severity=0.8,
+        description="Need scalability evidence",
+        suggested_query=(
+            "candidate scalability"
+        ),
+        search_strategy="PERFORMANCE_SCALE",
+        preferred_source_types=[
+            "official_documentation",
+            "benchmark",
+        ],
+        strategy_match_status="FULL",
+        matched_source_types=[
+            "official_documentation",
+            "benchmark",
+        ],
+        missing_source_types=[],
+    )
+
+    analysis = ResearchAnalysis(
+        decision_id="dec_test",
+        research_gaps=[
+            gap_item
+        ],
+    )
+
+    state = AdaptiveResearchState(
+        decision_id="dec_test"
+    )
+
+    assert (
+        select_research_gaps(
+            analysis,
+            state,
+        )
+        == []
+    )
+
+
+def test_strategy_partial_gap_uses_missing_source_query():
+    gap_item = ResearchGap(
+        gap_id="gap_partial_strategy",
+        candidate_id="cand_a",
+        criterion_id="crit_scale",
+        gap_type="low_coverage",
+        severity=0.8,
+        description="Need scalability evidence",
+        suggested_query=(
+            "Qdrant scalability "
+            "official documentation benchmark"
+        ),
+        search_strategy="PERFORMANCE_SCALE",
+        preferred_source_types=[
+            "official_documentation",
+            "benchmark",
+        ],
+        query_qualifiers=[
+            "official documentation",
+            "benchmark",
+        ],
+        strategy_match_status="PARTIAL",
+        matched_source_types=[
+            "official_documentation",
+        ],
+        missing_source_types=[
+            "benchmark",
+        ],
+    )
+
+    tasks = create_followup_tasks(
+        [gap_item],
+        starting_task_id=10,
+    )
+
+    assert len(tasks) == 1
+
+    assert (
+        "independent benchmark"
+        in tasks[0].query
+    )
+
+    assert (
+        "official documentation"
+        not in tasks[0].query
+    )

@@ -10,6 +10,11 @@ from models import (
     TodoItem,
 )
 
+from services.strategy_replanning import (
+    build_effective_followup_query,
+    is_strategy_reroute,
+)
+
 
 DEFAULT_MAX_FOLLOWUP_TASKS = 3
 
@@ -60,14 +65,23 @@ def select_research_gaps(
         if gap.status != "open":
             continue
 
-        if gap.gap_id in executed_gap_ids:
+        if (
+            gap.gap_id in executed_gap_ids
+            and not is_strategy_reroute(gap)
+        ):
             continue
 
-        if not gap.suggested_query:
+        effective_query = (
+            build_effective_followup_query(
+                gap
+            )
+        )
+
+        if not effective_query:
             continue
 
         normalized_query = normalize_query(
-            gap.suggested_query
+            effective_query
         )
 
         if not normalized_query:
@@ -93,30 +107,54 @@ def create_followup_tasks(
     *,
     starting_task_id: int,
 ) -> list[TodoItem]:
-    """Convert selected ResearchGap objects into executable TodoItems."""
+    """Convert selected gaps into strategy-aware executable tasks."""
 
     tasks: list[TodoItem] = []
 
-    for offset, gap in enumerate(
-        gaps,
-        start=1,
-    ):
+    for gap in gaps:
         query = (
-            gap.suggested_query
-            or gap.description
-        ).strip()
+            build_effective_followup_query(
+                gap
+            )
+        )
+
+        if not query:
+            continue
+
+        task_id = (
+            starting_task_id
+            + len(tasks)
+            + 1
+        )
+
+        missing_types = (
+            ", ".join(
+                gap.missing_source_types
+            )
+            if gap.missing_source_types
+            else None
+        )
+
+        intent = (
+            "Resolve adaptive research gap "
+            f"{gap.gap_id}: "
+            f"{gap.description}"
+        )
+
+        if missing_types:
+            intent += (
+                ". Target missing source "
+                f"types: {missing_types}"
+            )
 
         tasks.append(
             TodoItem(
-                id=starting_task_id + offset,
+                id=task_id,
                 title=(
-                    f"Follow-up research: "
+                    "Follow-up research: "
                     f"{gap.gap_type}"
                 ),
-                intent=(
-                    "Resolve adaptive research gap "
-                    f"{gap.gap_id}: {gap.description}"
-                ),
+                intent=intent,
                 query=query,
             )
         )
@@ -241,19 +279,26 @@ def record_iteration_started(
                 gap.gap_id
             )
 
-        if gap.suggested_query:
+        effective_query = (
+            build_effective_followup_query(
+                gap
+            )
+        )
+
+        if effective_query:
             normalized = normalize_query(
-                gap.suggested_query
+                effective_query
             )
 
             existing = {
                 normalize_query(query)
-                for query in adaptive_state.executed_queries
+                for query
+                in adaptive_state.executed_queries
             }
 
             if normalized not in existing:
                 adaptive_state.executed_queries.append(
-                    gap.suggested_query
+                    effective_query
                 )
 
 
