@@ -10,6 +10,12 @@ from models import (
     ResearchUsage,
     SummaryState,
 )
+from services.retrieval_yield import (
+    apply_diminishing_returns_stop,
+    assess_iteration_retrieval_yield,
+    capture_retrieval_snapshot,
+)
+
 
 
 def ensure_adaptive_runtime(
@@ -115,6 +121,12 @@ def run_adaptive_decision_loop(
         if analysis is None:
             break
 
+        before_snapshot = (
+            capture_retrieval_snapshot(
+                state
+            )
+        )
+
         iteration = execute_followups(
             state,
             analysis,
@@ -134,6 +146,25 @@ def run_adaptive_decision_loop(
             state,
             research_budget=budget,
             research_usage=usage,
+        )
+
+        after_snapshot = (
+            capture_retrieval_snapshot(
+                state
+            )
+        )
+
+        assess_iteration_retrieval_yield(
+            iteration,
+            before_snapshot,
+            after_snapshot,
+        )
+
+        state.stopping_decision = (
+            apply_diminishing_returns_stop(
+                state.stopping_decision,
+                adaptive_state.iterations,
+            )
         )
 
     return state

@@ -273,3 +273,177 @@ def test_non_decision_state_is_noop():
     assert result is state
     assert state.research_usage is None
     assert state.adaptive_research_state is None
+
+
+def test_adaptive_loop_records_retrieval_yield():
+    from models import (
+        AdaptiveResearchIteration,
+        Evidence,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    calls = {
+        "followups": 0,
+        "intelligence": 0,
+    }
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        calls["followups"] += 1
+
+        if calls["followups"] > 1:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=1,
+            task_ids=[1],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = 1
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        state_arg.evidence_items.append(
+            Evidence(
+                evidence_id="evi_new",
+                task_id=1,
+                trace_id="trace_new",
+                query="benchmark",
+                backend="web",
+                source_title="Benchmark",
+            )
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        calls["intelligence"] += 1
+
+        state_arg.stopping_decision = (
+            continue_decision()
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=(
+            execute_followups
+        ),
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    iteration = (
+        state
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        iteration.retrieval_yield_status
+        == "LOW_YIELD"
+    )
+
+    assert (
+        iteration.new_evidence_count
+        == 1
+    )
+
+
+def test_adaptive_loop_stops_after_repeated_no_yield():
+    from models import (
+        AdaptiveResearchIteration,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    call_count = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal call_count
+        call_count += 1
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=call_count,
+            task_ids=[call_count],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = (
+            call_count
+        )
+
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.stopping_decision = (
+            continue_decision()
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=(
+            execute_followups
+        ),
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    assert call_count == 2
+
+    assert (
+        state.stopping_decision.reason
+        == "diminishing_returns"
+    )
+
+    assert (
+        state
+        .stopping_decision
+        .consecutive_low_yield_iterations
+        == 2
+    )

@@ -236,3 +236,26 @@ def test_first_iteration_can_continue_without_history():
 
     assert decision.should_continue is True
     assert decision.readiness_improvement is None
+
+
+def test_retrieval_yield_fields_have_safe_defaults():
+    decision = should_continue_research(
+        readiness(
+            score=0.5,
+            status="NOT_READY",
+        ),
+        analysis_with_gap(),
+        ResearchBudget(),
+        ResearchUsage(),
+    )
+
+    assert (
+        decision.retrieval_yield_status
+        == "UNKNOWN"
+    )
+
+    assert (
+        decision
+        .consecutive_low_yield_iterations
+        == 0
+    )

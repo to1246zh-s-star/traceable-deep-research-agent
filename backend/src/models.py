@@ -695,6 +695,15 @@ class AdaptiveResearchIteration:
 
     status: str = field(default="planned")
 
+    # Phase 29: deterministic marginal retrieval yield.
+    retrieval_yield_status: str = field(default="UNKNOWN")
+    new_evidence_count: int = field(default=0)
+    new_authority_types: list[str] = field(default_factory=list)
+    new_strategy_matches: list[str] = field(default_factory=list)
+    gap_count_before: Optional[int] = field(default=None)
+    gap_count_after: Optional[int] = field(default=None)
+    retrieval_yield_reasons: list[str] = field(default_factory=list)
+
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -794,6 +803,10 @@ class ResearchStoppingDecision:
     actionable_gap_count: int = field(default=0)
 
     blocking_budget_limits: list[str] = field(default_factory=list)
+
+    # Phase 29: retrieval-yield stopping explanation.
+    retrieval_yield_status: str = field(default="UNKNOWN")
+    consecutive_low_yield_iterations: int = field(default=0)
 
 
 @dataclass(kw_only=True)

@@ -1062,3 +1062,86 @@ def test_research_gap_strategy_match_round_trip(
         item.strategy_matched_evidence_ids
         == ["evi_docs"]
     )
+
+
+def test_retrieval_yield_metadata_round_trip(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_yield",
+        iteration_number=1,
+        status="completed",
+        retrieval_yield_status=(
+            "MODERATE_YIELD"
+        ),
+        new_evidence_count=3,
+        new_authority_types=[
+            "ACADEMIC",
+        ],
+        new_strategy_matches=[
+            (
+                "cand_a|crit_scale|"
+                "academic_paper"
+            )
+        ],
+        gap_count_before=3,
+        gap_count_after=2,
+        retrieval_yield_reasons=[
+            "1 new strategy source match(es)",
+        ],
+    )
+
+    state = SummaryState(
+        adaptive_research_state=(
+            AdaptiveResearchState(
+                decision_id="dec_yield",
+                iteration_count=1,
+                iterations=[
+                    iteration
+                ],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    item = (
+        restored
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.retrieval_yield_status
+        == "MODERATE_YIELD"
+    )
+
+    assert item.new_evidence_count == 3
+
+    assert item.new_authority_types == [
+        "ACADEMIC"
+    ]
+
+    assert item.gap_count_before == 3
+    assert item.gap_count_after == 2
