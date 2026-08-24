@@ -1145,3 +1145,92 @@ def test_retrieval_yield_metadata_round_trip(
 
     assert item.gap_count_before == 3
     assert item.gap_count_after == 2
+
+
+def test_evidence_saturation_metadata_round_trip(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_saturation",
+        iteration_number=1,
+        status="completed",
+        evidence_saturation_status=(
+            "HIGH_SATURATION"
+        ),
+        new_unique_source_count=2,
+        novel_content_count=1,
+        duplicate_domain_ratio=0.75,
+        near_duplicate_content_ratio=0.8,
+        saturation_reasons=[
+            (
+                "most new evidence is "
+                "near-duplicate content"
+            )
+        ],
+    )
+
+    state = SummaryState(
+        adaptive_research_state=(
+            AdaptiveResearchState(
+                decision_id="dec_saturation",
+                iteration_count=1,
+                iterations=[
+                    iteration
+                ],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    item = (
+        restored
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.evidence_saturation_status
+        == "HIGH_SATURATION"
+    )
+
+    assert (
+        item.new_unique_source_count
+        == 2
+    )
+
+    assert (
+        item.novel_content_count
+        == 1
+    )
+
+    assert (
+        item.duplicate_domain_ratio
+        == 0.75
+    )
+
+    assert (
+        item.near_duplicate_content_ratio
+        == 0.8
+    )

@@ -452,3 +452,20 @@ def test_legacy_iteration_without_status_is_unknown():
         item.retrieval_yield_reasons
         == ["iteration_status_unavailable"]
     )
+
+
+def test_saturation_does_not_directly_change_yield_status():
+    item = iteration()
+
+    item.retrieval_yield_status = (
+        "MODERATE_YIELD"
+    )
+
+    item.evidence_saturation_status = (
+        "HIGH_SATURATION"
+    )
+
+    assert (
+        item.retrieval_yield_status
+        == "MODERATE_YIELD"
+    )

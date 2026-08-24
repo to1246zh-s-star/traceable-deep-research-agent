@@ -10,6 +10,11 @@ from models import (
     ResearchUsage,
     SummaryState,
 )
+from services.evidence_saturation import (
+    assess_iteration_evidence_saturation,
+    capture_evidence_saturation_snapshot,
+    enrich_retrieval_yield_with_saturation,
+)
 from services.retrieval_yield import (
     apply_diminishing_returns_stop,
     assess_iteration_retrieval_yield,
@@ -121,6 +126,12 @@ def run_adaptive_decision_loop(
         if analysis is None:
             break
 
+        before_saturation_snapshot = (
+            capture_evidence_saturation_snapshot(
+                state.evidence_items
+            )
+        )
+
         before_snapshot = (
             capture_retrieval_snapshot(
                 state
@@ -158,6 +169,22 @@ def run_adaptive_decision_loop(
             iteration,
             before_snapshot,
             after_snapshot,
+        )
+
+        after_saturation_snapshot = (
+            capture_evidence_saturation_snapshot(
+                state.evidence_items
+            )
+        )
+
+        assess_iteration_evidence_saturation(
+            iteration,
+            before_saturation_snapshot,
+            after_saturation_snapshot,
+        )
+
+        enrich_retrieval_yield_with_saturation(
+            iteration
         )
 
         state.stopping_decision = (

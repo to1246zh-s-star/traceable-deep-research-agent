@@ -447,3 +447,131 @@ def test_adaptive_loop_stops_after_repeated_no_yield():
         .consecutive_low_yield_iterations
         == 2
     )
+
+
+def test_adaptive_loop_attaches_evidence_saturation():
+    from models import (
+        AdaptiveResearchIteration,
+        Evidence,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    calls = 0
+
+    repeated_content = (
+        "Independent benchmark latency throughput "
+        "memory concurrency vector search workload"
+    )
+
+    state.evidence_items.append(
+        Evidence(
+            evidence_id="old",
+            task_id=0,
+            trace_id="old_trace",
+            query="old",
+            backend="web",
+            source_title="Old benchmark",
+            source_url=(
+                "https://old.example/benchmark"
+            ),
+            snippet=repeated_content,
+        )
+    )
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 1:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=1,
+            task_ids=[1],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = 1
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        state_arg.evidence_items.extend([
+            Evidence(
+                evidence_id="new_1",
+                task_id=1,
+                trace_id="trace_1",
+                query="benchmark",
+                backend="web",
+                source_title="Mirror benchmark A",
+                source_url=(
+                    "https://mirror-a.example/result"
+                ),
+                snippet=repeated_content,
+            ),
+            Evidence(
+                evidence_id="new_2",
+                task_id=1,
+                trace_id="trace_2",
+                query="benchmark",
+                backend="web",
+                source_title="Mirror benchmark B",
+                source_url=(
+                    "https://mirror-b.example/result"
+                ),
+                snippet=repeated_content,
+            ),
+        ])
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.stopping_decision = (
+            stop_decision()
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=(
+            execute_followups
+        ),
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    item = (
+        state
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.evidence_saturation_status
+        == "HIGH_SATURATION"
+    )
+
+    assert (
+        item.near_duplicate_content_ratio
+        == 1.0
+    )

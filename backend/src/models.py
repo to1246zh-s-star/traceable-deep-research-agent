@@ -704,6 +704,14 @@ class AdaptiveResearchIteration:
     gap_count_after: Optional[int] = field(default=None)
     retrieval_yield_reasons: list[str] = field(default_factory=list)
 
+    # Phase 30: deterministic evidence redundancy / saturation.
+    evidence_saturation_status: str = field(default="UNKNOWN")
+    new_unique_source_count: int = field(default=0)
+    novel_content_count: int = field(default=0)
+    duplicate_domain_ratio: float = field(default=0.0)
+    near_duplicate_content_ratio: float = field(default=0.0)
+    saturation_reasons: list[str] = field(default_factory=list)
+
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
