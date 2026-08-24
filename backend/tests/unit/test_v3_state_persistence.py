@@ -870,3 +870,100 @@ def test_research_gap_search_strategy_round_trip(
         "official documentation",
         "benchmark",
     ]
+
+
+def test_source_authority_metadata_round_trip(
+    tmp_path,
+):
+    from models import (
+        EvidenceApplicability,
+        EvidenceAssessment,
+        EvidenceQuality,
+        SourceQuality,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        evidence_assessments=[
+            EvidenceAssessment(
+                evidence_id="evi_authority",
+                decision_id="dec_authority",
+                source_quality=SourceQuality(
+                    evidence_id=(
+                        "evi_authority"
+                    ),
+                    source_type=(
+                        "official_docs"
+                    ),
+                    confidence=0.9,
+                    authority_type=(
+                        "OFFICIAL_DOCUMENTATION"
+                    ),
+                    authority_level="HIGH",
+                    authority_signals=[
+                        (
+                            "candidate_vendor_match:"
+                            "cand_qdrant"
+                        )
+                    ],
+                ),
+                evidence_quality=EvidenceQuality(
+                    evidence_id=(
+                        "evi_authority"
+                    ),
+                    quality_score=0.8,
+                    completeness=0.8,
+                ),
+                applicability=(
+                    EvidenceApplicability(
+                        evidence_id=(
+                            "evi_authority"
+                        ),
+                        decision_id=(
+                            "dec_authority"
+                        ),
+                        applicability_score=0.8,
+                    )
+                ),
+                overall_score=0.8,
+            )
+        ]
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    quality = (
+        restored
+        .evidence_assessments[0]
+        .source_quality
+    )
+
+    assert (
+        quality.authority_type
+        == "OFFICIAL_DOCUMENTATION"
+    )
+
+    assert (
+        quality.authority_level
+        == "HIGH"
+    )
+
+    assert quality.authority_signals == [
+        (
+            "candidate_vendor_match:"
+            "cand_qdrant"
+        )
+    ]

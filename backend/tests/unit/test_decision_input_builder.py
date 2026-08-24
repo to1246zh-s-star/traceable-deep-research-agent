@@ -205,3 +205,52 @@ def test_attach_evidence_signals_updates_state():
 
     assert result is state
     assert state.evidence_signals
+
+
+def test_source_authority_flows_into_evidence_signal_confidence():
+    state = make_state()
+    decision = make_decision()
+
+    assessments = build_evidence_assessments(
+        state,
+        decision,
+    )
+
+    state.evidence_assessments = (
+        assessments
+    )
+
+    official = next(
+        item
+        for item in assessments
+        if item.evidence_id
+        == "evi_official"
+    )
+
+    assert (
+        official
+        .source_quality
+        .authority_type
+        == "OFFICIAL_DOCUMENTATION"
+    )
+
+    from services.decision_input_builder import (
+        build_evidence_signals,
+    )
+
+    signals = build_evidence_signals(
+        state,
+        decision,
+    )
+
+    signal = next(
+        item
+        for item in signals
+        if item.evidence_id
+        == "evi_official"
+    )
+
+    assert (
+        signal.source_confidence
+        == official.source_quality.confidence
+    )

@@ -385,6 +385,13 @@ class SourceQuality:
     source_type: str
     confidence: float
 
+    # Phase 26: deterministic recognition of the authority represented
+    # by the actual retrieved source. UNKNOWN is explicit rather than
+    # silently treated as medium authority.
+    authority_type: str = field(default="UNKNOWN")
+    authority_level: str = field(default="UNKNOWN")
+    authority_signals: list[str] = field(default_factory=list)
+
     rationale: Optional[str] = field(default=None)
 
 

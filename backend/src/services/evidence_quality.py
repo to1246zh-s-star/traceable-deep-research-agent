@@ -12,6 +12,11 @@ from models import (
     SourceQuality,
 )
 
+from services.source_authority import (
+    authority_confidence,
+    recognize_source_authority,
+)
+
 
 SOURCE_TYPE_CONFIDENCE = {
     "official_docs": 0.95,
@@ -79,20 +84,76 @@ def classify_source_type(evidence: Evidence) -> str:
 
 def assess_source_quality(
     evidence: Evidence,
+    decision: DecisionCase | None = None,
 ) -> SourceQuality:
-    """Assign baseline source confidence using deterministic source typing."""
+    """
+    Assess source quality with optional Phase 26 authority recognition.
 
-    source_type = classify_source_type(evidence)
+    Backward compatibility:
+    when no DecisionCase is available, preserve the pre-Phase-26
+    source-type confidence rather than pretending authority was resolved.
+    """
 
-    confidence = SOURCE_TYPE_CONFIDENCE[source_type]
+    source_type = classify_source_type(
+        evidence
+    )
+
+    legacy_confidence = (
+        SOURCE_TYPE_CONFIDENCE[
+            source_type
+        ]
+    )
+
+    if decision is None:
+        return SourceQuality(
+            evidence_id=evidence.evidence_id,
+            source_type=source_type,
+            confidence=legacy_confidence,
+            authority_type="UNKNOWN",
+            authority_level="UNKNOWN",
+            authority_signals=[
+                "authority_not_evaluated_without_decision"
+            ],
+            rationale=(
+                "Source classified as "
+                f"{source_type!r}. "
+                "Authority recognition was not evaluated "
+                "because no DecisionCase was supplied; "
+                "legacy source-type confidence was preserved."
+            ),
+        )
+
+    authority = recognize_source_authority(
+        evidence,
+        decision,
+    )
+
+    confidence = authority_confidence(
+        authority,
+        legacy_confidence=legacy_confidence,
+    )
 
     return SourceQuality(
         evidence_id=evidence.evidence_id,
         source_type=source_type,
         confidence=confidence,
+        authority_type=(
+            authority.authority_type
+        ),
+        authority_level=(
+            authority.authority_level
+        ),
+        authority_signals=list(
+            authority.signals
+        ),
         rationale=(
-            f"Baseline confidence derived from source type "
-            f"{source_type!r}"
+            "Source classified as "
+            f"{source_type!r}; authority "
+            f"recognized as "
+            f"{authority.authority_type!r} "
+            f"({authority.authority_level}). "
+            "Confidence is a deterministic "
+            "heuristic, not a calibrated probability."
         ),
     )
 
@@ -241,7 +302,10 @@ def assess_evidence(
 ) -> EvidenceAssessment:
     """Combine source quality, evidence quality, and applicability."""
 
-    source_quality = assess_source_quality(evidence)
+    source_quality = assess_source_quality(
+        evidence,
+        decision,
+    )
     evidence_quality = assess_evidence_quality(evidence)
     applicability = assess_applicability(
         evidence,

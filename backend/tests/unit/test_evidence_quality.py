@@ -224,3 +224,137 @@ def test_empty_source_diversity():
     assert diversity.source_type_count == 0
     assert diversity.diversity_score == 0.0
     assert diversity.source_types == []
+
+
+def test_source_quality_exposes_authority_metadata():
+    from models import (
+        Candidate,
+        DecisionCase,
+    )
+    from services.evidence_quality import (
+        assess_source_quality,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_authority",
+        question="Choose database",
+        candidates=[
+            Candidate(
+                candidate_id="cand_qdrant",
+                name="Qdrant",
+            )
+        ],
+    )
+
+    evidence = Evidence(
+        evidence_id="evi_authority",
+        task_id=1,
+        trace_id="trace_authority",
+        query="Qdrant docs",
+        backend="web",
+        source_title="Qdrant Documentation",
+        source_url=(
+            "https://qdrant.tech/documentation/"
+        ),
+    )
+
+    quality = assess_source_quality(
+        evidence,
+        decision,
+    )
+
+    # Legacy taxonomy remains compatible.
+    assert quality.source_type
+
+    assert (
+        quality.authority_type
+        == "OFFICIAL_DOCUMENTATION"
+    )
+
+    assert (
+        quality.authority_level
+        == "HIGH"
+    )
+
+    assert quality.authority_signals
+
+
+def test_unknown_authority_is_explicit():
+    from models import (
+        Candidate,
+        DecisionCase,
+    )
+    from services.evidence_quality import (
+        assess_source_quality,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_unknown",
+        question="Choose database",
+        candidates=[
+            Candidate(
+                candidate_id="cand_qdrant",
+                name="Qdrant",
+            )
+        ],
+    )
+
+    evidence = Evidence(
+        evidence_id="evi_unknown_authority",
+        task_id=1,
+        trace_id="trace_unknown",
+        query="Qdrant docs",
+        backend="web",
+        source_title="Article",
+        source_url=(
+            "https://example.com/article"
+        ),
+    )
+
+    quality = assess_source_quality(
+        evidence,
+        decision,
+    )
+
+    assert (
+        quality.authority_type
+        == "UNKNOWN"
+    )
+
+    assert (
+        quality.authority_level
+        == "UNKNOWN"
+    )
+
+    assert quality.confidence <= 0.5
+
+
+def test_source_quality_without_decision_preserves_legacy_confidence():
+    evidence = make_evidence()
+
+    quality = assess_source_quality(
+        evidence
+    )
+
+    assert quality.source_type == (
+        "official_docs"
+    )
+
+    assert quality.confidence == (
+        pytest.approx(0.95)
+    )
+
+    assert (
+        quality.authority_type
+        == "UNKNOWN"
+    )
+
+    assert (
+        quality.authority_level
+        == "UNKNOWN"
+    )
+
+    assert (
+        "authority_not_evaluated_without_decision"
+        in quality.authority_signals
+    )
