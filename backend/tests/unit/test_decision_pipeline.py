@@ -1329,3 +1329,231 @@ def test_pipeline_attaches_search_strategy_to_research_gaps():
         in gap.preferred_source_types
         for gap in scale_gaps
     )
+
+
+def test_pipeline_attaches_source_strategy_match_metadata():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        Evidence,
+        SummaryState,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_strategy_match",
+        question="Choose Qdrant",
+        candidates=[
+            Candidate(
+                candidate_id="cand_qdrant",
+                name="Qdrant",
+            )
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_scale",
+                name="Scalability",
+                weight=1.0,
+            )
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Qdrant scalability",
+        evidence_items=[
+            Evidence(
+                evidence_id="evi_qdrant_docs",
+                task_id=1,
+                trace_id="trace_1",
+                query="Qdrant scalability",
+                backend="web",
+                source_title=(
+                    "Qdrant scalability documentation"
+                ),
+                source_url=(
+                    "https://qdrant.tech/"
+                    "documentation/guides/"
+                ),
+                snippet=(
+                    "Qdrant scalability "
+                    "documentation."
+                ),
+            )
+        ],
+    )
+
+    result = run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_qdrant",
+                criterion_id="crit_scale",
+                fitness_score=8.0,
+            )
+        ],
+    )
+
+    assert result is state
+
+    gaps = (
+        state
+        .research_analysis
+        .research_gaps
+    )
+
+    scale_gaps = [
+        gap
+        for gap in gaps
+        if gap.candidate_id
+        == "cand_qdrant"
+        and gap.criterion_id
+        == "crit_scale"
+    ]
+
+    assert scale_gaps
+
+    item = scale_gaps[0]
+
+    assert (
+        item.search_strategy
+        == "PERFORMANCE_SCALE"
+    )
+
+    # Official docs are present, but Phase 25 also asks for
+    # benchmark + academic evidence.
+    assert (
+        item.strategy_match_status
+        in {
+            "PARTIAL",
+            "NONE",
+        }
+    )
+
+    assert (
+        "benchmark"
+        in item.missing_source_types
+    )
+
+    assert (
+        "academic_paper"
+        in item.missing_source_types
+    )
+
+
+def test_pipeline_attaches_source_strategy_match_metadata():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        Evidence,
+        SummaryState,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_strategy_match",
+        question="Choose Qdrant",
+        candidates=[
+            Candidate(
+                candidate_id="cand_qdrant",
+                name="Qdrant",
+            )
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_scale",
+                name="Scalability",
+                weight=1.0,
+            )
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Qdrant scalability",
+        evidence_items=[
+            Evidence(
+                evidence_id="evi_qdrant_docs",
+                task_id=1,
+                trace_id="trace_1",
+                query="Qdrant scalability",
+                backend="web",
+                source_title=(
+                    "Qdrant scalability documentation"
+                ),
+                source_url=(
+                    "https://qdrant.tech/"
+                    "documentation/guides/"
+                ),
+                snippet=(
+                    "Qdrant scalability "
+                    "documentation."
+                ),
+            )
+        ],
+    )
+
+    result = run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_qdrant",
+                criterion_id="crit_scale",
+                fitness_score=8.0,
+            )
+        ],
+    )
+
+    assert result is state
+
+    gaps = (
+        state
+        .research_analysis
+        .research_gaps
+    )
+
+    scale_gaps = [
+        gap
+        for gap in gaps
+        if gap.candidate_id
+        == "cand_qdrant"
+        and gap.criterion_id
+        == "crit_scale"
+    ]
+
+    assert scale_gaps
+
+    item = scale_gaps[0]
+
+    assert (
+        item.search_strategy
+        == "PERFORMANCE_SCALE"
+    )
+
+    # Official docs are present, but Phase 25 also asks for
+    # benchmark + academic evidence.
+    assert (
+        item.strategy_match_status
+        in {
+            "PARTIAL",
+            "NONE",
+        }
+    )
+
+    assert (
+        "benchmark"
+        in item.missing_source_types
+    )
+
+    assert (
+        "academic_paper"
+        in item.missing_source_types
+    )

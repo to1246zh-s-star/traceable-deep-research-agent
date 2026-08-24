@@ -641,6 +641,13 @@ class ResearchGap:
     preferred_source_types: list[str] = field(default_factory=list)
     query_qualifiers: list[str] = field(default_factory=list)
 
+    # Phase 27: observed effectiveness of the Phase 25 retrieval strategy.
+    strategy_match_status: str = field(default="UNKNOWN")
+    matched_source_types: list[str] = field(default_factory=list)
+    missing_source_types: list[str] = field(default_factory=list)
+    observed_authority_types: list[str] = field(default_factory=list)
+    strategy_matched_evidence_ids: list[str] = field(default_factory=list)
+
     # Phase 17.5 decision-impact enrichment.
     # priority is ordinal routing metadata, not a probability.
     decision_impact: str = field(default="UNKNOWN")

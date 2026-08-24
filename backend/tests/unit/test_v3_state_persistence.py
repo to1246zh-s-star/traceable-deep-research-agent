@@ -967,3 +967,98 @@ def test_source_authority_metadata_round_trip(
             "cand_qdrant"
         )
     ]
+
+
+def test_research_gap_strategy_match_round_trip(
+    tmp_path,
+):
+    from models import (
+        ResearchAnalysis,
+        ResearchGap,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        research_analysis=ResearchAnalysis(
+            decision_id="dec_match",
+            research_gaps=[
+                ResearchGap(
+                    gap_id="gap_match",
+                    candidate_id="cand_a",
+                    criterion_id="crit_scale",
+                    gap_type="low_coverage",
+                    severity=0.8,
+                    description="Need evidence",
+                    suggested_query=(
+                        "candidate benchmark"
+                    ),
+                    search_strategy=(
+                        "PERFORMANCE_SCALE"
+                    ),
+                    preferred_source_types=[
+                        "official_documentation",
+                        "benchmark",
+                    ],
+                    strategy_match_status=(
+                        "PARTIAL"
+                    ),
+                    matched_source_types=[
+                        "official_documentation",
+                    ],
+                    missing_source_types=[
+                        "benchmark",
+                    ],
+                    observed_authority_types=[
+                        "OFFICIAL_DOCUMENTATION",
+                    ],
+                    strategy_matched_evidence_ids=[
+                        "evi_docs",
+                    ],
+                )
+            ],
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    item = (
+        restored
+        .research_analysis
+        .research_gaps[0]
+    )
+
+    assert (
+        item.strategy_match_status
+        == "PARTIAL"
+    )
+
+    assert item.matched_source_types == [
+        "official_documentation",
+    ]
+
+    assert item.missing_source_types == [
+        "benchmark",
+    ]
+
+    assert (
+        item.observed_authority_types
+        == ["OFFICIAL_DOCUMENTATION"]
+    )
+
+    assert (
+        item.strategy_matched_evidence_ids
+        == ["evi_docs"]
+    )
