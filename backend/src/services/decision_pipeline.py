@@ -23,6 +23,7 @@ from services.decision_input_builder import (
 from services.decision_readiness import calculate_readiness
 from services.decision_sensitivity import analyze_decision_sensitivity
 from services.research_analysis import analyze_research
+from services.search_strategy import assign_search_strategies
 from services.recommendation_robustness import analyze_recommendation_robustness
 from services.decision_impact_gaps import enrich_research_gaps_with_decision_impact
 from services.decision_assumptions import analyze_decision_assumptions
@@ -218,6 +219,11 @@ def run_decision_pipeline(
             overall_score=readiness.overall_score,
             status=readiness.status,
         )
+    )
+
+    assign_search_strategies(
+        decision,
+        analysis.research_gaps,
     )
 
     stopping_decision = should_continue_research(

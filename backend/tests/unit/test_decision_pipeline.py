@@ -1232,3 +1232,100 @@ def test_pipeline_stores_reevaluation_triggers():
         for item
         in state.decision_reevaluation_triggers
     )
+
+
+def test_pipeline_attaches_search_strategy_to_research_gaps():
+    from models import (
+        Candidate,
+        CandidateCriterionScore,
+        DecisionCase,
+        DecisionCriterion,
+        SummaryState,
+    )
+    from services.decision_pipeline import (
+        run_decision_pipeline,
+    )
+
+    decision = DecisionCase(
+        decision_id="dec_search_strategy",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        criteria=[
+            DecisionCriterion(
+                criterion_id="crit_scale",
+                name="Scalability",
+                weight=1.0,
+            )
+        ],
+    )
+
+    state = SummaryState(
+        research_topic="Choose A or B"
+    )
+
+    run_decision_pipeline(
+        state,
+        decision,
+        criterion_scores=[
+            CandidateCriterionScore(
+                candidate_id="cand_a",
+                criterion_id="crit_scale",
+                fitness_score=8.0,
+            ),
+            CandidateCriterionScore(
+                candidate_id="cand_b",
+                criterion_id="crit_scale",
+                fitness_score=7.0,
+            ),
+        ],
+        evidence_signals=[],
+        evidence_assessments=[],
+    )
+
+    assert (
+        state.research_analysis
+        is not None
+    )
+
+    gaps = (
+        state
+        .research_analysis
+        .research_gaps
+    )
+
+    assert gaps
+
+    assert all(
+        gap.search_strategy
+        for gap in gaps
+    )
+
+    scale_gaps = [
+        gap
+        for gap in gaps
+        if gap.criterion_id
+        == "crit_scale"
+    ]
+
+    assert scale_gaps
+
+    assert all(
+        gap.search_strategy
+        == "PERFORMANCE_SCALE"
+        for gap in scale_gaps
+    )
+
+    assert all(
+        "benchmark"
+        in gap.preferred_source_types
+        for gap in scale_gaps
+    )

@@ -789,3 +789,84 @@ def test_sqlite_persists_reevaluation_triggers(tmp_path):
 
     assert item.trigger_impact == "HIGH"
     assert item.reevaluation_required is True
+
+
+def test_research_gap_search_strategy_round_trip(
+    tmp_path,
+):
+    from models import (
+        ResearchAnalysis,
+        ResearchGap,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        research_analysis=ResearchAnalysis(
+            decision_id="dec_strategy",
+            research_gaps=[
+                ResearchGap(
+                    gap_id="gap_strategy",
+                    candidate_id="cand_a",
+                    criterion_id="crit_scale",
+                    gap_type="low_coverage",
+                    severity=0.8,
+                    description=(
+                        "Need scalability evidence"
+                    ),
+                    suggested_query=(
+                        "Qdrant scalability "
+                        "official documentation "
+                        "benchmark"
+                    ),
+                    search_strategy=(
+                        "PERFORMANCE_SCALE"
+                    ),
+                    preferred_source_types=[
+                        "official_documentation",
+                        "benchmark",
+                    ],
+                    query_qualifiers=[
+                        "official documentation",
+                        "benchmark",
+                    ],
+                )
+            ],
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(state)
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+    assert restored.research_analysis is not None
+
+    item = (
+        restored
+        .research_analysis
+        .research_gaps[0]
+    )
+
+    assert (
+        item.search_strategy
+        == "PERFORMANCE_SCALE"
+    )
+
+    assert item.preferred_source_types == [
+        "official_documentation",
+        "benchmark",
+    ]
+
+    assert item.query_qualifiers == [
+        "official documentation",
+        "benchmark",
+    ]

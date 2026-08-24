@@ -629,6 +629,11 @@ class ResearchGap:
     description: str
     suggested_query: Optional[str] = field(default=None)
 
+    # Deterministic retrieval intent used by adaptive research.
+    search_strategy: str = field(default="GENERAL")
+    preferred_source_types: list[str] = field(default_factory=list)
+    query_qualifiers: list[str] = field(default_factory=list)
+
     # Phase 17.5 decision-impact enrichment.
     # priority is ordinal routing metadata, not a probability.
     decision_impact: str = field(default="UNKNOWN")

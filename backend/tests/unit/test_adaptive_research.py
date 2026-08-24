@@ -425,3 +425,42 @@ def test_selects_decision_impact_before_raw_severity():
 
     assert len(selected) == 1
     assert selected[0].gap_id == "gap_high_impact"
+
+
+def test_followup_task_preserves_search_strategy_query():
+    gap_item = ResearchGap(
+        gap_id="gap_strategy",
+        candidate_id="cand_a",
+        criterion_id="crit_scale",
+        gap_type="low_coverage",
+        severity=0.8,
+        description="Need scalability evidence",
+        suggested_query=(
+            "Qdrant scalability "
+            "official documentation "
+            "benchmark performance"
+        ),
+        search_strategy="PERFORMANCE_SCALE",
+        preferred_source_types=[
+            "official_documentation",
+            "benchmark",
+        ],
+        query_qualifiers=[
+            "official documentation",
+            "benchmark",
+            "performance",
+        ],
+    )
+
+    tasks = create_followup_tasks(
+        [gap_item],
+        starting_task_id=10,
+    )
+
+    assert len(tasks) == 1
+
+    assert tasks[0].query == (
+        "Qdrant scalability "
+        "official documentation "
+        "benchmark performance"
+    )
