@@ -1234,3 +1234,83 @@ def test_evidence_saturation_metadata_round_trip(
         item.near_duplicate_content_ratio
         == 0.8
     )
+
+
+def test_information_gain_metadata_round_trip(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_info_gain",
+        iteration_number=1,
+        status="completed",
+        information_gain_status=(
+            "HIGH_INFORMATION_GAIN"
+        ),
+        new_claim_count=3,
+        novel_claim_count=2,
+        duplicate_claim_count=1,
+        claim_novelty_ratio=0.6667,
+        new_directional_signal_count=2,
+        new_candidate_criterion_pairs=[
+            "cand_a|crit_scale",
+        ],
+        information_gain_reasons=[
+            "1 newly covered candidate×criterion pair(s)",
+        ],
+    )
+
+    state = SummaryState(
+        adaptive_research_state=(
+            AdaptiveResearchState(
+                decision_id="dec_info_gain",
+                iteration_count=1,
+                iterations=[
+                    iteration
+                ],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    item = (
+        restored
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.information_gain_status
+        == "HIGH_INFORMATION_GAIN"
+    )
+
+    assert item.new_claim_count == 3
+    assert item.novel_claim_count == 2
+    assert item.duplicate_claim_count == 1
+    assert item.claim_novelty_ratio == 0.6667
+
+    assert (
+        item.new_candidate_criterion_pairs
+        == ["cand_a|crit_scale"]
+    )

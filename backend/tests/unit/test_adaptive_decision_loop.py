@@ -575,3 +575,210 @@ def test_adaptive_loop_attaches_evidence_saturation():
         item.near_duplicate_content_ratio
         == 1.0
     )
+
+
+def test_adaptive_loop_attaches_information_gain():
+    from models import (
+        AdaptiveResearchIteration,
+        EvidenceSignal,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    calls = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 1:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=1,
+            task_ids=[1],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = 1
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.evidence_signals.append(
+            EvidenceSignal(
+                evidence_id="evi_new",
+                candidate_id="cand_a",
+                criterion_id="crit_new",
+                direction="POSITIVE",
+                strength=0.8,
+                source_confidence=0.8,
+                applicability=0.8,
+            )
+        )
+
+        state_arg.stopping_decision = (
+            stop_decision()
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=(
+            execute_followups
+        ),
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    item = (
+        state
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.information_gain_status
+        == "HIGH_INFORMATION_GAIN"
+    )
+
+    assert (
+        item.new_directional_signal_count
+        == 1
+    )
+
+    assert (
+        "cand_a|crit_new"
+        in item.new_candidate_criterion_pairs
+    )
+
+
+def test_information_gain_compares_pre_and_post_decision_state():
+    from models import (
+        AdaptiveResearchIteration,
+        EvidenceSignal,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    state.evidence_signals.append(
+        EvidenceSignal(
+            evidence_id="old_evidence",
+            candidate_id="cand_a",
+            criterion_id="crit_existing",
+            direction="POSITIVE",
+            strength=0.7,
+            source_confidence=0.8,
+            applicability=0.8,
+        )
+    )
+
+    calls = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 1:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=1,
+            task_ids=[1],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = 1
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.evidence_signals.append(
+            EvidenceSignal(
+                evidence_id="new_evidence",
+                candidate_id="cand_a",
+                criterion_id="crit_existing",
+                direction="NEGATIVE",
+                strength=0.8,
+                source_confidence=0.8,
+                applicability=0.8,
+            )
+        )
+
+        state_arg.stopping_decision = (
+            stop_decision()
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=execute_followups,
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    item = (
+        state
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.information_gain_status
+        == "MODERATE_INFORMATION_GAIN"
+    )
+
+    assert (
+        item.new_directional_signal_count
+        == 1
+    )
+
+    # Same pair was already covered before the iteration.
+    assert (
+        item.new_candidate_criterion_pairs
+        == []
+    )

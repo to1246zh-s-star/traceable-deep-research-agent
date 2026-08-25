@@ -10,6 +10,11 @@ from models import (
     ResearchUsage,
     SummaryState,
 )
+from services.claim_information_gain import (
+    assess_iteration_information_gain,
+    capture_claim_information_snapshot,
+    enrich_retrieval_yield_with_information_gain,
+)
 from services.evidence_saturation import (
     assess_iteration_evidence_saturation,
     capture_evidence_saturation_snapshot,
@@ -126,6 +131,17 @@ def run_adaptive_decision_loop(
         if analysis is None:
             break
 
+        before_claim_snapshot = (
+            capture_claim_information_snapshot(
+                state.claims,
+                state.evidence_signals,
+            )
+        )
+
+        before_claim_count = len(
+            state.claims
+        )
+
         before_saturation_snapshot = (
             capture_evidence_saturation_snapshot(
                 state.evidence_items
@@ -184,6 +200,27 @@ def run_adaptive_decision_loop(
         )
 
         enrich_retrieval_yield_with_saturation(
+            iteration
+        )
+
+        after_claim_snapshot = (
+            capture_claim_information_snapshot(
+                state.claims,
+                state.evidence_signals,
+            )
+        )
+
+        assess_iteration_information_gain(
+            iteration,
+            before_claim_snapshot,
+            after_claim_snapshot,
+            before_claim_count=before_claim_count,
+            after_claim_count=len(
+                state.claims
+            ),
+        )
+
+        enrich_retrieval_yield_with_information_gain(
             iteration
         )
 

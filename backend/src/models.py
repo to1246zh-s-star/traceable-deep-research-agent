@@ -712,6 +712,16 @@ class AdaptiveResearchIteration:
     near_duplicate_content_ratio: float = field(default=0.0)
     saturation_reasons: list[str] = field(default_factory=list)
 
+    # Phase 31: deterministic decision-relevant information gain.
+    information_gain_status: str = field(default="UNKNOWN")
+    new_claim_count: int = field(default=0)
+    novel_claim_count: int = field(default=0)
+    duplicate_claim_count: int = field(default=0)
+    claim_novelty_ratio: float = field(default=0.0)
+    new_directional_signal_count: int = field(default=0)
+    new_candidate_criterion_pairs: list[str] = field(default_factory=list)
+    information_gain_reasons: list[str] = field(default_factory=list)
+
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
