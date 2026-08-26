@@ -722,6 +722,10 @@ class AdaptiveResearchIteration:
     new_candidate_criterion_pairs: list[str] = field(default_factory=list)
     information_gain_reasons: list[str] = field(default_factory=list)
 
+    # Phase 32: unified deterministic adaptive research value.
+    adaptive_research_value_status: str = field(default="UNKNOWN")
+    adaptive_research_value_reasons: list[str] = field(default_factory=list)
+
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -825,6 +829,10 @@ class ResearchStoppingDecision:
     # Phase 29: retrieval-yield stopping explanation.
     retrieval_yield_status: str = field(default="UNKNOWN")
     consecutive_low_yield_iterations: int = field(default=0)
+
+    # Phase 32: stopping now consumes unified research value.
+    adaptive_research_value_status: str = field(default="UNKNOWN")
+    consecutive_low_value_iterations: int = field(default=0)
 
 
 @dataclass(kw_only=True)

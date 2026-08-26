@@ -259,3 +259,25 @@ def test_retrieval_yield_fields_have_safe_defaults():
         .consecutive_low_yield_iterations
         == 0
     )
+
+
+def test_adaptive_research_value_fields_have_safe_defaults():
+    decision = should_continue_research(
+        readiness(
+            score=0.5,
+            status="NOT_READY",
+        ),
+        analysis_with_gap(),
+        ResearchBudget(),
+        ResearchUsage(),
+    )
+
+    assert (
+        decision.adaptive_research_value_status
+        == "UNKNOWN"
+    )
+
+    assert (
+        decision.consecutive_low_value_iterations
+        == 0
+    )

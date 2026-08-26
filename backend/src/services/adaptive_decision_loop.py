@@ -10,6 +10,10 @@ from models import (
     ResearchUsage,
     SummaryState,
 )
+from services.adaptive_research_value import (
+    apply_adaptive_research_value_stop,
+    assess_iteration_research_value,
+)
 from services.claim_information_gain import (
     assess_iteration_information_gain,
     capture_claim_information_snapshot,
@@ -21,7 +25,6 @@ from services.evidence_saturation import (
     enrich_retrieval_yield_with_saturation,
 )
 from services.retrieval_yield import (
-    apply_diminishing_returns_stop,
     assess_iteration_retrieval_yield,
     capture_retrieval_snapshot,
 )
@@ -224,8 +227,12 @@ def run_adaptive_decision_loop(
             iteration
         )
 
+        assess_iteration_research_value(
+            iteration
+        )
+
         state.stopping_decision = (
-            apply_diminishing_returns_stop(
+            apply_adaptive_research_value_stop(
                 state.stopping_decision,
                 adaptive_state.iterations,
             )

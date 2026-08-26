@@ -1314,3 +1314,78 @@ def test_information_gain_metadata_round_trip(
         item.new_candidate_criterion_pairs
         == ["cand_a|crit_scale"]
     )
+
+
+def test_adaptive_research_value_metadata_round_trip(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_value",
+        iteration_number=1,
+        status="completed",
+        adaptive_research_value_status=(
+            "MODERATE_VALUE"
+        ),
+        adaptive_research_value_reasons=[
+            (
+                "decision information gain: "
+                "moderate_information_gain"
+            )
+        ],
+    )
+
+    state = SummaryState(
+        adaptive_research_state=(
+            AdaptiveResearchState(
+                decision_id="dec_value",
+                iteration_count=1,
+                iterations=[
+                    iteration
+                ],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    item = (
+        restored
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.adaptive_research_value_status
+        == "MODERATE_VALUE"
+    )
+
+    assert (
+        item.adaptive_research_value_reasons
+        == [
+            (
+                "decision information gain: "
+                "moderate_information_gain"
+            )
+        ]
+    )
