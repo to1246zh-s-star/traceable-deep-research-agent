@@ -448,39 +448,137 @@
                   researchReplay.decision.adaptive_research_state?.iterations?.length
                 "
                 class="adaptive-research-iterations"
+                aria-labelledby="adaptive-research-title"
               >
                 <div class="adaptive-research-heading">
                   <div>
-                    <p class="trace-eyebrow">Adaptive Research</p>
-                    <h4>Research Value Replay</h4>
+                    <p class="trace-eyebrow">
+                      Adaptive Research
+                    </p>
+                    <h4 id="adaptive-research-title">
+                      Research Journey
+                    </h4>
+                    <p class="adaptive-journey-description">
+                      How each follow-up research iteration changed
+                      the decision-relevant knowledge state.
+                    </p>
                   </div>
 
                   <span class="adaptive-iteration-count">
                     {{
-                      researchReplay.decision.adaptive_research_state.iterations.length
+                      researchReplay.decision
+                        .adaptive_research_state
+                        .iterations.length
                     }}
                     iterations
                   </span>
                 </div>
 
+                <div
+                  class="adaptive-journey-summary"
+                  aria-label="Adaptive research journey summary"
+                >
+                  <div class="adaptive-journey-metric">
+                    <span>Iterations</span>
+                    <strong>
+                      {{
+                        researchReplay.decision
+                          .adaptive_research_state
+                          .iterations.length
+                      }}
+                    </strong>
+                  </div>
+
+                  <div class="adaptive-journey-metric">
+                    <span>New Evidence</span>
+                    <strong>
+                      {{ adaptiveTotalEvidence() }}
+                    </strong>
+                  </div>
+
+                  <div class="adaptive-journey-metric">
+                    <span>Novel Claims</span>
+                    <strong>
+                      {{ adaptiveTotalNovelClaims() }}
+                    </strong>
+                  </div>
+
+                  <div class="adaptive-journey-metric">
+                    <span>New Coverage</span>
+                    <strong>
+                      {{ adaptiveTotalNewCoverage() }}
+                    </strong>
+                  </div>
+
+                  <div class="adaptive-journey-metric">
+                    <span>Final Value</span>
+                    <strong>
+                      {{
+                        formatResearchStatusLabel(
+                          adaptiveFinalResearchValue()
+                        )
+                      }}
+                    </strong>
+                  </div>
+
+                  <div class="adaptive-journey-metric">
+                    <span>Final Reason</span>
+                    <strong>
+                      {{
+                        formatResearchStatusLabel(
+                          adaptiveFinalStoppingReason()
+                        )
+                      }}
+                    </strong>
+                  </div>
+                </div>
+
                 <div class="adaptive-iteration-list">
-                  <article
-                    v-for="iteration in researchReplay.decision.adaptive_research_state.iterations"
+                  <details
+                    v-for="(iteration, index) in researchReplay.decision.adaptive_research_state.iterations"
                     :key="iteration.iteration_number"
                     class="adaptive-iteration-card"
+                    :class="{
+                      'adaptive-iteration-final':
+                        isFinalAdaptiveIteration(index)
+                    }"
+                    :open="
+                      researchReplay.decision
+                        .adaptive_research_state
+                        .iterations.length <= 2 ||
+                      isFinalAdaptiveIteration(index)
+                    "
                   >
-                    <header class="adaptive-iteration-header">
-                      <div>
-                        <span class="adaptive-iteration-label">
-                          Iteration {{ iteration.iteration_number }}
+                    <summary
+                      class="adaptive-iteration-header"
+                    >
+                      <div class="adaptive-iteration-title">
+                        <span
+                          class="adaptive-iteration-chevron"
+                          aria-hidden="true"
+                        >
+                          ›
                         </span>
 
-                        <span
-                          v-if="iteration.status"
-                          class="adaptive-run-status"
-                        >
-                          {{ iteration.status }}
-                        </span>
+                        <div>
+                          <span
+                            class="adaptive-iteration-label"
+                          >
+                            Iteration
+                            {{ iteration.iteration_number }}
+                          </span>
+
+                          <span
+                            v-if="iteration.status"
+                            class="adaptive-run-status"
+                          >
+                            {{
+                              formatResearchStatusLabel(
+                                iteration.status
+                              )
+                            }}
+                          </span>
+                        </div>
                       </div>
 
                       <span
@@ -491,130 +589,163 @@
                         ).toLowerCase()}`"
                       >
                         {{
-                          (
-                            iteration.adaptive_research_value_status ||
-                            "UNKNOWN"
-                          ).replaceAll("_", " ")
+                          formatResearchStatusLabel(
+                            iteration
+                              .adaptive_research_value_status
+                          )
                         }}
                       </span>
-                    </header>
+                    </summary>
 
-                    <p
-                      v-if="iteration.research_value_summary"
-                      class="adaptive-value-summary"
-                    >
-                      {{ iteration.research_value_summary }}
-                    </p>
-
-                    <div class="adaptive-signal-grid">
-                      <div class="adaptive-signal">
-                        <span>Retrieval Yield</span>
-                        <strong>
-                          {{
-                            (
-                              iteration.retrieval_yield_status ||
-                              "UNKNOWN"
-                            ).replaceAll("_", " ")
-                          }}
-                        </strong>
-                      </div>
-
-                      <div class="adaptive-signal">
-                        <span>Evidence Saturation</span>
-                        <strong>
-                          {{
-                            (
-                              iteration.evidence_saturation_status ||
-                              "UNKNOWN"
-                            ).replaceAll("_", " ")
-                          }}
-                        </strong>
-                      </div>
-
-                      <div class="adaptive-signal">
-                        <span>Information Gain</span>
-                        <strong>
-                          {{
-                            (
-                              iteration.information_gain_status ||
-                              "UNKNOWN"
-                            ).replaceAll("_", " ")
-                          }}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div
-                      v-if="
-                        iteration.research_value_observations?.length
-                      "
-                      class="adaptive-observations"
-                    >
-                      <span class="adaptive-subheading">
-                        Observed
-                      </span>
-
-                      <ul>
-                        <li
-                          v-for="observation in iteration.research_value_observations"
-                          :key="observation"
-                        >
-                          {{ observation }}
-                        </li>
-                      </ul>
-                    </div>
-
-                    <details
-                      v-if="
-                        iteration.research_value_explanation?.length
-                      "
-                      class="adaptive-explanation"
-                    >
-                      <summary>Why this research value?</summary>
-
-                      <ul>
-                        <li
-                          v-for="reason in iteration.research_value_explanation"
-                          :key="reason"
-                        >
-                          {{ reason }}
-                        </li>
-                      </ul>
-                    </details>
-
-                    <div
-                      v-if="
-                        iteration.new_candidate_criterion_pairs?.length
-                      "
-                      class="adaptive-new-coverage"
-                    >
-                      <span class="adaptive-subheading">
-                        New decision coverage
-                      </span>
-
-                      <div class="adaptive-pair-list">
-                        <code
-                          v-for="pair in iteration.new_candidate_criterion_pairs"
-                          :key="pair"
-                        >
-                          {{ pair }}
-                        </code>
-                      </div>
-                    </div>
-
-                    <div
-                      v-if="iteration.stopping_explanation"
-                      class="adaptive-stopping"
-                    >
-                      <span class="adaptive-subheading">
-                        Stopping
-                      </span>
-
-                      <p>
-                        {{ iteration.stopping_explanation }}
+                    <div class="adaptive-iteration-body">
+                      <p
+                        v-if="iteration.research_value_summary"
+                        class="adaptive-value-summary"
+                      >
+                        {{ iteration.research_value_summary }}
                       </p>
+
+                      <p
+                        v-else
+                        class="adaptive-value-summary adaptive-value-summary-empty"
+                      >
+                        No research-value explanation was recorded
+                        for this iteration.
+                      </p>
+
+                      <div
+                        class="adaptive-signal-grid"
+                        aria-label="Research value diagnostics"
+                      >
+                        <div class="adaptive-signal">
+                          <span>Retrieval Yield</span>
+                          <strong>
+                            {{
+                              formatResearchStatusLabel(
+                                iteration
+                                  .retrieval_yield_status
+                              )
+                            }}
+                          </strong>
+                        </div>
+
+                        <div class="adaptive-signal">
+                          <span>Evidence Saturation</span>
+                          <strong>
+                            {{
+                              formatResearchStatusLabel(
+                                iteration
+                                  .evidence_saturation_status
+                              )
+                            }}
+                          </strong>
+                        </div>
+
+                        <div class="adaptive-signal">
+                          <span>Information Gain</span>
+                          <strong>
+                            {{
+                              formatResearchStatusLabel(
+                                iteration
+                                  .information_gain_status
+                              )
+                            }}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="
+                          iteration
+                            .research_value_observations
+                            ?.length
+                        "
+                        class="adaptive-observations"
+                      >
+                        <span class="adaptive-subheading">
+                          Observed
+                        </span>
+
+                        <ul>
+                          <li
+                            v-for="observation in iteration.research_value_observations"
+                            :key="observation"
+                          >
+                            {{ observation }}
+                          </li>
+                        </ul>
+                      </div>
+
+                      <details
+                        v-if="
+                          iteration
+                            .research_value_explanation
+                            ?.length
+                        "
+                        class="adaptive-explanation"
+                      >
+                        <summary>
+                          Why this research value?
+                        </summary>
+
+                        <ul>
+                          <li
+                            v-for="reason in iteration.research_value_explanation"
+                            :key="reason"
+                          >
+                            {{ reason }}
+                          </li>
+                        </ul>
+                      </details>
+
+                      <div
+                        v-if="
+                          iteration
+                            .new_candidate_criterion_pairs
+                            ?.length
+                        "
+                        class="adaptive-new-coverage"
+                      >
+                        <span class="adaptive-subheading">
+                          New decision coverage
+                        </span>
+
+                        <div class="adaptive-pair-list">
+                          <code
+                            v-for="pair in iteration.new_candidate_criterion_pairs"
+                            :key="pair"
+                          >
+                            {{ pair }}
+                          </code>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="
+                          iteration.stopping_explanation
+                        "
+                        class="adaptive-stopping"
+                        :class="{
+                          'adaptive-stopping-final':
+                            isFinalAdaptiveIteration(index)
+                        }"
+                      >
+                        <span class="adaptive-subheading">
+                          {{
+                            isFinalAdaptiveIteration(index)
+                              ? "Final stopping decision"
+                              : "Stopping state"
+                          }}
+                        </span>
+
+                        <p>
+                          {{
+                            iteration.stopping_explanation
+                          }}
+                        </p>
+                      </div>
                     </div>
-                  </article>
+                  </details>
                 </div>
               </section>
 
@@ -1718,6 +1849,88 @@ async function copyNotePath(path: string | null | undefined) {
 
 const researchId = ref<string | null>(null);
 const researchReplay = ref<ResearchReplayResponse | null>(null);
+
+
+function formatResearchStatusLabel(
+  value?: string | null
+): string {
+  const normalized = (value || "UNKNOWN")
+    .trim()
+    .replaceAll("_", " ")
+    .toLowerCase();
+
+  return normalized.replace(
+    /\b\w/g,
+    character => character.toUpperCase()
+  );
+}
+
+function adaptiveReplayIterations() {
+  return (
+    researchReplay.value?.decision
+      ?.adaptive_research_state
+      ?.iterations || []
+  );
+}
+
+function adaptiveTotalEvidence(): number {
+  return adaptiveReplayIterations().reduce(
+    (total, iteration) =>
+      total + (iteration.new_evidence_count || 0),
+    0
+  );
+}
+
+function adaptiveTotalNovelClaims(): number {
+  return adaptiveReplayIterations().reduce(
+    (total, iteration) =>
+      total + (iteration.novel_claim_count || 0),
+    0
+  );
+}
+
+function adaptiveTotalNewCoverage(): number {
+  return adaptiveReplayIterations().reduce(
+    (total, iteration) =>
+      total +
+      (
+        iteration.new_candidate_criterion_pairs
+        ?.length || 0
+      ),
+    0
+  );
+}
+
+function adaptiveFinalResearchValue(): string {
+  const iterations = adaptiveReplayIterations();
+
+  if (!iterations.length) {
+    return "UNKNOWN";
+  }
+
+  return (
+    iterations[iterations.length - 1]
+      .adaptive_research_value_status ||
+    "UNKNOWN"
+  );
+}
+
+function adaptiveFinalStoppingReason(): string {
+  return (
+    researchReplay.value?.decision
+      ?.stopping_decision?.reason ||
+    "not recorded"
+  );
+}
+
+function isFinalAdaptiveIteration(
+  index: number
+): boolean {
+  return (
+    index ===
+    adaptiveReplayIterations().length - 1
+  );
+}
 const replayLoading = ref(false);
 const replayError = ref("");
 const executionTraces = ref<ExecutionTraceResponse[]>([]);
@@ -5167,5 +5380,147 @@ select:focus {
   }
 }
 
+
+
+.adaptive-journey-description {
+  max-width: 620px;
+  margin: 5px 0 0;
+  line-height: 1.45;
+  font-size: 12px;
+  opacity: 0.66;
+}
+
+.adaptive-journey-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.adaptive-journey-metric {
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 9px;
+  border:
+    1px solid rgba(148, 163, 184, 0.14);
+  background:
+    rgba(148, 163, 184, 0.055);
+}
+
+.adaptive-journey-metric span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.58;
+}
+
+.adaptive-journey-metric strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+details.adaptive-iteration-card {
+  overflow: hidden;
+}
+
+details.adaptive-iteration-card > summary {
+  list-style: none;
+}
+
+details.adaptive-iteration-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.adaptive-iteration-card[open] {
+  background: rgba(15, 23, 42, 0.23);
+}
+
+.adaptive-iteration-final {
+  border-color:
+    rgba(148, 163, 184, 0.30);
+}
+
+.adaptive-iteration-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.adaptive-iteration-title > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.adaptive-iteration-chevron {
+  display: inline-block;
+  font-size: 21px;
+  line-height: 1;
+  opacity: 0.55;
+  transition: transform 0.18s ease;
+}
+
+.adaptive-iteration-card[open]
+  .adaptive-iteration-chevron {
+  transform: rotate(90deg);
+}
+
+.adaptive-iteration-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.adaptive-iteration-header:hover {
+  opacity: 0.92;
+}
+
+.adaptive-iteration-header:focus-visible {
+  outline:
+    2px solid rgba(96, 165, 250, 0.65);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.adaptive-iteration-body {
+  padding-top: 2px;
+}
+
+.adaptive-value-summary-empty {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+.adaptive-stopping-final {
+  border-color:
+    rgba(245, 158, 11, 0.25);
+}
+
+@media (max-width: 980px) {
+  .adaptive-journey-summary {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .adaptive-journey-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .adaptive-iteration-header {
+    align-items: flex-start;
+  }
+
+  .research-value-badge {
+    white-space: normal;
+    text-align: right;
+  }
+}
 
 </style>
