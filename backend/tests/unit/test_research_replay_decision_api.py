@@ -433,3 +433,344 @@ def test_replay_exposes_recommendation_robustness():
     )
     assert robustness["flip_count"] == 0
 
+
+
+def test_replay_exposes_adaptive_research_value_explanation():
+    from models import AdaptiveResearchIteration
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_adaptive_replay",
+            question="Choose A or B",
+            candidates=[
+                Candidate(
+                    candidate_id="cand_a",
+                    name="A",
+                ),
+                Candidate(
+                    candidate_id="cand_b",
+                    name="B",
+                ),
+            ],
+        ),
+        adaptive_research_state=AdaptiveResearchState(
+            decision_id="dec_adaptive_replay",
+            iteration_count=1,
+            iterations=[
+                AdaptiveResearchIteration(
+                    decision_id="dec_adaptive_replay",
+                    iteration_number=1,
+                    status="completed",
+                    retrieval_yield_status="LOW_YIELD",
+                    new_evidence_count=6,
+                    evidence_saturation_status="HIGH_SATURATION",
+                    new_unique_source_count=5,
+                    novel_content_count=1,
+                    duplicate_domain_ratio=0.83,
+                    near_duplicate_content_ratio=0.67,
+                    information_gain_status="NO_INFORMATION_GAIN",
+                    new_claim_count=2,
+                    novel_claim_count=1,
+                    duplicate_claim_count=1,
+                    claim_novelty_ratio=0.5,
+                    new_directional_signal_count=0,
+                    new_candidate_criterion_pairs=[],
+                    adaptive_research_value_status="LOW_VALUE",
+                    research_value_summary=(
+                        "This research iteration added limited "
+                        "decision-relevant value."
+                    ),
+                    research_value_explanation=[
+                        "retrieval yield: low_yield",
+                        "evidence saturation: high_saturation",
+                        (
+                            "decision information gain: "
+                            "no_information_gain"
+                        ),
+                        "adaptive research value: low_value",
+                    ],
+                    research_value_observations=[
+                        "6 new evidence item(s)",
+                        "5 new unique source URL(s)",
+                        "1 novel claim(s)",
+                    ],
+                    stopping_explanation=(
+                        "Adaptive research stopped because marginal "
+                        "research value showed diminishing returns "
+                        "across 2 consecutive low-value iteration(s)."
+                    ),
+                )
+            ],
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_adaptive_replay",
+        state,
+    )
+
+    decision = payload["decision"]
+    assert decision is not None
+
+    adaptive = decision[
+        "adaptive_research_state"
+    ]
+
+    assert adaptive["iteration_count"] == 1
+
+    item = adaptive["iterations"][0]
+
+    # Phase 29
+    assert (
+        item["retrieval_yield_status"]
+        == "LOW_YIELD"
+    )
+    assert item["new_evidence_count"] == 6
+
+    # Phase 30
+    assert (
+        item["evidence_saturation_status"]
+        == "HIGH_SATURATION"
+    )
+    assert (
+        item["near_duplicate_content_ratio"]
+        == 0.67
+    )
+
+    # Phase 31
+    assert (
+        item["information_gain_status"]
+        == "NO_INFORMATION_GAIN"
+    )
+    assert item["novel_claim_count"] == 1
+    assert (
+        item["new_candidate_criterion_pairs"]
+        == []
+    )
+
+    # Phase 32
+    assert (
+        item["adaptive_research_value_status"]
+        == "LOW_VALUE"
+    )
+
+    # Phase 33
+    assert (
+        item["research_value_summary"]
+        == (
+            "This research iteration added limited "
+            "decision-relevant value."
+        )
+    )
+
+    assert (
+        "adaptive research value: low_value"
+        in item["research_value_explanation"]
+    )
+
+    assert (
+        "6 new evidence item(s)"
+        in item["research_value_observations"]
+    )
+
+    assert (
+        "diminishing returns"
+        in item["stopping_explanation"]
+    )
+
+
+def test_replay_preserves_adaptive_iteration_order():
+    from models import AdaptiveResearchIteration
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_order",
+            question="Choose A or B",
+        ),
+        adaptive_research_state=AdaptiveResearchState(
+            decision_id="dec_order",
+            iteration_count=3,
+            iterations=[
+                AdaptiveResearchIteration(
+                    decision_id="dec_order",
+                    iteration_number=1,
+                    status="completed",
+                    adaptive_research_value_status="HIGH_VALUE",
+                    research_value_summary="iteration one",
+                ),
+                AdaptiveResearchIteration(
+                    decision_id="dec_order",
+                    iteration_number=2,
+                    status="completed",
+                    adaptive_research_value_status="MODERATE_VALUE",
+                    research_value_summary="iteration two",
+                ),
+                AdaptiveResearchIteration(
+                    decision_id="dec_order",
+                    iteration_number=3,
+                    status="completed",
+                    adaptive_research_value_status="LOW_VALUE",
+                    research_value_summary="iteration three",
+                ),
+            ],
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_order",
+        state,
+    )
+
+    iterations = payload[
+        "decision"
+    ][
+        "adaptive_research_state"
+    ][
+        "iterations"
+    ]
+
+    assert [
+        item["iteration_number"]
+        for item in iterations
+    ] == [
+        1,
+        2,
+        3,
+    ]
+
+    assert [
+        item["research_value_summary"]
+        for item in iterations
+    ] == [
+        "iteration one",
+        "iteration two",
+        "iteration three",
+    ]
+
+
+def test_replay_exposes_safe_defaults_for_legacy_adaptive_iteration():
+    from models import AdaptiveResearchIteration
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_legacy",
+            question="Choose A or B",
+        ),
+        adaptive_research_state=AdaptiveResearchState(
+            decision_id="dec_legacy",
+            iteration_count=1,
+            iterations=[
+                AdaptiveResearchIteration(
+                    decision_id="dec_legacy",
+                    iteration_number=1,
+                )
+            ],
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_legacy",
+        state,
+    )
+
+    item = payload[
+        "decision"
+    ][
+        "adaptive_research_state"
+    ][
+        "iterations"
+    ][0]
+
+    assert (
+        item["retrieval_yield_status"]
+        == "UNKNOWN"
+    )
+
+    assert (
+        item["evidence_saturation_status"]
+        == "UNKNOWN"
+    )
+
+    assert (
+        item["information_gain_status"]
+        == "UNKNOWN"
+    )
+
+    assert (
+        item["adaptive_research_value_status"]
+        == "UNKNOWN"
+    )
+
+    assert item["research_value_summary"] == ""
+    assert item["research_value_explanation"] == []
+    assert item["research_value_observations"] == []
+    assert item["stopping_explanation"] == ""
+
+
+def test_replay_serialization_does_not_mutate_adaptive_state():
+    from models import AdaptiveResearchIteration
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_no_mutation",
+        iteration_number=1,
+        status="completed",
+        adaptive_research_value_status="LOW_VALUE",
+        research_value_summary="persisted summary",
+        research_value_explanation=[
+            "persisted explanation"
+        ],
+        research_value_observations=[
+            "persisted observation"
+        ],
+        stopping_explanation=(
+            "persisted stopping explanation"
+        ),
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_no_mutation",
+            question="Choose A or B",
+        ),
+        adaptive_research_state=AdaptiveResearchState(
+            decision_id="dec_no_mutation",
+            iteration_count=1,
+            iterations=[
+                iteration
+            ],
+        ),
+    )
+
+    _build_research_replay(
+        "research_no_mutation",
+        state,
+    )
+
+    assert (
+        iteration.adaptive_research_value_status
+        == "LOW_VALUE"
+    )
+
+    assert (
+        iteration.research_value_summary
+        == "persisted summary"
+    )
+
+    assert (
+        iteration.research_value_explanation
+        == ["persisted explanation"]
+    )
+
+    assert (
+        iteration.research_value_observations
+        == ["persisted observation"]
+    )
+
+    assert (
+        iteration.stopping_explanation
+        == "persisted stopping explanation"
+    )

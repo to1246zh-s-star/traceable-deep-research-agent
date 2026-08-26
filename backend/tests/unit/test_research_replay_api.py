@@ -166,3 +166,179 @@ def test_replay_endpoint_returns_404_for_unknown_run():
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Research run not found"
+
+
+def test_replay_endpoint_exposes_persisted_adaptive_value_metadata(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        Candidate,
+        DecisionCase,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_sqlite_replay",
+            question="Choose A or B",
+            candidates=[
+                Candidate(
+                    candidate_id="cand_a",
+                    name="A",
+                ),
+                Candidate(
+                    candidate_id="cand_b",
+                    name="B",
+                ),
+            ],
+        ),
+        adaptive_research_state=AdaptiveResearchState(
+            decision_id="dec_sqlite_replay",
+            iteration_count=1,
+            iterations=[
+                AdaptiveResearchIteration(
+                    decision_id="dec_sqlite_replay",
+                    iteration_number=1,
+                    status="completed",
+                    retrieval_yield_status="LOW_YIELD",
+                    evidence_saturation_status="HIGH_SATURATION",
+                    information_gain_status="NO_INFORMATION_GAIN",
+                    adaptive_research_value_status="LOW_VALUE",
+                    research_value_summary=(
+                        "This research iteration added limited "
+                        "decision-relevant value."
+                    ),
+                    research_value_explanation=[
+                        "retrieval yield: low_yield",
+                        (
+                            "evidence saturation: "
+                            "high_saturation"
+                        ),
+                        (
+                            "decision information gain: "
+                            "no_information_gain"
+                        ),
+                        (
+                            "adaptive research value: "
+                            "low_value"
+                        ),
+                    ],
+                    research_value_observations=[
+                        "6 new evidence item(s)",
+                    ],
+                    stopping_explanation=(
+                        "Adaptive research stopped because "
+                        "marginal research value showed "
+                        "diminishing returns."
+                    ),
+                )
+            ],
+        ),
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    app = create_app()
+    app.state.research_store = store
+
+    client = TestClient(app)
+
+    response = client.get(
+        f"/research/{research_id}/replay"
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    item = payload[
+        "decision"
+    ][
+        "adaptive_research_state"
+    ][
+        "iterations"
+    ][0]
+
+    assert (
+        item["retrieval_yield_status"]
+        == "LOW_YIELD"
+    )
+
+    assert (
+        item["evidence_saturation_status"]
+        == "HIGH_SATURATION"
+    )
+
+    assert (
+        item["information_gain_status"]
+        == "NO_INFORMATION_GAIN"
+    )
+
+    assert (
+        item["adaptive_research_value_status"]
+        == "LOW_VALUE"
+    )
+
+    assert (
+        item["research_value_summary"]
+        == (
+            "This research iteration added limited "
+            "decision-relevant value."
+        )
+    )
+
+    assert (
+        "adaptive research value: low_value"
+        in item["research_value_explanation"]
+    )
+
+    assert (
+        "6 new evidence item(s)"
+        in item["research_value_observations"]
+    )
+
+    assert (
+        "diminishing returns"
+        in item["stopping_explanation"]
+    )
+
+
+def test_replay_endpoint_only_reads_stored_state():
+    state = make_state()
+
+    class ReadOnlyResearchStore:
+        def __init__(self):
+            self.get_calls = 0
+
+        def get(self, research_id):
+            self.get_calls += 1
+
+            if research_id == "research_read_only":
+                return state
+
+            return None
+
+    store = ReadOnlyResearchStore()
+
+    app = create_app()
+    app.state.research_store = store
+
+    client = TestClient(app)
+
+    response = client.get(
+        "/research/research_read_only/replay"
+    )
+
+    assert response.status_code == 200
+    assert store.get_calls == 1
