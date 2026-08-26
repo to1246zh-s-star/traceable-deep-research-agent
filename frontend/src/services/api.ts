@@ -411,6 +411,44 @@ export interface ResearchUsageResponse {
   constraint_llm_calls: number;
 }
 
+export interface AdaptiveResearchIterationResponse {
+  decision_id: string;
+  iteration_number: number;
+  status: string;
+
+  retrieval_yield_status?: string;
+  new_evidence_count?: number;
+  new_authority_types?: string[];
+  new_strategy_matches?: string[];
+  gap_count_before?: number | null;
+  gap_count_after?: number | null;
+  retrieval_yield_reasons?: string[];
+
+  evidence_saturation_status?: string;
+  new_unique_source_count?: number;
+  novel_content_count?: number;
+  duplicate_domain_ratio?: number;
+  near_duplicate_content_ratio?: number;
+  saturation_reasons?: string[];
+
+  information_gain_status?: string;
+  new_claim_count?: number;
+  novel_claim_count?: number;
+  duplicate_claim_count?: number;
+  claim_novelty_ratio?: number;
+  new_directional_signal_count?: number;
+  new_candidate_criterion_pairs?: string[];
+  information_gain_reasons?: string[];
+
+  adaptive_research_value_status?: string;
+  adaptive_research_value_reasons?: string[];
+
+  research_value_summary?: string;
+  research_value_explanation?: string[];
+  research_value_observations?: string[];
+  stopping_explanation?: string;
+}
+
 export interface AdaptiveResearchStateResponse {
   decision_id: string;
   iteration_count: number;
@@ -418,6 +456,7 @@ export interface AdaptiveResearchStateResponse {
   executed_gap_ids?: string[];
   executed_queries?: string[];
   status: string;
+  iterations?: AdaptiveResearchIterationResponse[];
 }
 
 export interface DecisionIntelligenceResponse {

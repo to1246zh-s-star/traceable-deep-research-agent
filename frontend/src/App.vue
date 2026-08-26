@@ -443,6 +443,181 @@
                 </div>
               </div>
 
+              <section
+                v-if="
+                  researchReplay.decision.adaptive_research_state?.iterations?.length
+                "
+                class="adaptive-research-iterations"
+              >
+                <div class="adaptive-research-heading">
+                  <div>
+                    <p class="trace-eyebrow">Adaptive Research</p>
+                    <h4>Research Value Replay</h4>
+                  </div>
+
+                  <span class="adaptive-iteration-count">
+                    {{
+                      researchReplay.decision.adaptive_research_state.iterations.length
+                    }}
+                    iterations
+                  </span>
+                </div>
+
+                <div class="adaptive-iteration-list">
+                  <article
+                    v-for="iteration in researchReplay.decision.adaptive_research_state.iterations"
+                    :key="iteration.iteration_number"
+                    class="adaptive-iteration-card"
+                  >
+                    <header class="adaptive-iteration-header">
+                      <div>
+                        <span class="adaptive-iteration-label">
+                          Iteration {{ iteration.iteration_number }}
+                        </span>
+
+                        <span
+                          v-if="iteration.status"
+                          class="adaptive-run-status"
+                        >
+                          {{ iteration.status }}
+                        </span>
+                      </div>
+
+                      <span
+                        class="research-value-badge"
+                        :class="`research-value-${(
+                          iteration.adaptive_research_value_status ||
+                          'UNKNOWN'
+                        ).toLowerCase()}`"
+                      >
+                        {{
+                          (
+                            iteration.adaptive_research_value_status ||
+                            "UNKNOWN"
+                          ).replaceAll("_", " ")
+                        }}
+                      </span>
+                    </header>
+
+                    <p
+                      v-if="iteration.research_value_summary"
+                      class="adaptive-value-summary"
+                    >
+                      {{ iteration.research_value_summary }}
+                    </p>
+
+                    <div class="adaptive-signal-grid">
+                      <div class="adaptive-signal">
+                        <span>Retrieval Yield</span>
+                        <strong>
+                          {{
+                            (
+                              iteration.retrieval_yield_status ||
+                              "UNKNOWN"
+                            ).replaceAll("_", " ")
+                          }}
+                        </strong>
+                      </div>
+
+                      <div class="adaptive-signal">
+                        <span>Evidence Saturation</span>
+                        <strong>
+                          {{
+                            (
+                              iteration.evidence_saturation_status ||
+                              "UNKNOWN"
+                            ).replaceAll("_", " ")
+                          }}
+                        </strong>
+                      </div>
+
+                      <div class="adaptive-signal">
+                        <span>Information Gain</span>
+                        <strong>
+                          {{
+                            (
+                              iteration.information_gain_status ||
+                              "UNKNOWN"
+                            ).replaceAll("_", " ")
+                          }}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="
+                        iteration.research_value_observations?.length
+                      "
+                      class="adaptive-observations"
+                    >
+                      <span class="adaptive-subheading">
+                        Observed
+                      </span>
+
+                      <ul>
+                        <li
+                          v-for="observation in iteration.research_value_observations"
+                          :key="observation"
+                        >
+                          {{ observation }}
+                        </li>
+                      </ul>
+                    </div>
+
+                    <details
+                      v-if="
+                        iteration.research_value_explanation?.length
+                      "
+                      class="adaptive-explanation"
+                    >
+                      <summary>Why this research value?</summary>
+
+                      <ul>
+                        <li
+                          v-for="reason in iteration.research_value_explanation"
+                          :key="reason"
+                        >
+                          {{ reason }}
+                        </li>
+                      </ul>
+                    </details>
+
+                    <div
+                      v-if="
+                        iteration.new_candidate_criterion_pairs?.length
+                      "
+                      class="adaptive-new-coverage"
+                    >
+                      <span class="adaptive-subheading">
+                        New decision coverage
+                      </span>
+
+                      <div class="adaptive-pair-list">
+                        <code
+                          v-for="pair in iteration.new_candidate_criterion_pairs"
+                          :key="pair"
+                        >
+                          {{ pair }}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="iteration.stopping_explanation"
+                      class="adaptive-stopping"
+                    >
+                      <span class="adaptive-subheading">
+                        Stopping
+                      </span>
+
+                      <p>
+                        {{ iteration.stopping_explanation }}
+                      </p>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
               <div
                 v-if="
                   researchReplay.decision.readiness?.blocking_reasons?.length
@@ -4778,4 +4953,219 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.adaptive-research-iterations {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.adaptive-research-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.adaptive-research-heading h4 {
+  margin: 3px 0 0;
+}
+
+.adaptive-iteration-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.68;
+}
+
+.adaptive-iteration-list {
+  display: grid;
+  gap: 12px;
+}
+
+.adaptive-iteration-card {
+  padding: 15px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.adaptive-iteration-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.adaptive-iteration-header > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.adaptive-iteration-label {
+  font-weight: 700;
+}
+
+.adaptive-run-status {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  opacity: 0.72;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.research-value-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.research-value-high_value {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.32);
+}
+
+.research-value-moderate_value {
+  background: rgba(59, 130, 246, 0.10);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.research-value-low_value {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.30);
+}
+
+.research-value-no_value,
+.research-value-unknown {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.20);
+  opacity: 0.82;
+}
+
+.adaptive-value-summary {
+  margin: 10px 0 0;
+  line-height: 1.55;
+  opacity: 0.86;
+}
+
+.adaptive-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.adaptive-signal {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.07);
+}
+
+.adaptive-signal span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  opacity: 0.62;
+}
+
+.adaptive-signal strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.adaptive-subheading {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+}
+
+.adaptive-observations,
+.adaptive-new-coverage,
+.adaptive-stopping,
+.adaptive-explanation {
+  margin-top: 12px;
+}
+
+.adaptive-observations ul,
+.adaptive-explanation ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.adaptive-observations li,
+.adaptive-explanation li {
+  margin: 3px 0;
+  line-height: 1.45;
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.adaptive-explanation {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 10px;
+}
+
+.adaptive-explanation summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  opacity: 0.76;
+}
+
+.adaptive-pair-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.adaptive-pair-list code {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.09);
+  font-size: 11px;
+}
+
+.adaptive-stopping {
+  padding: 10px 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adaptive-stopping p {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+@media (max-width: 760px) {
+  .adaptive-signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .adaptive-iteration-header,
+  .adaptive-research-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+
 </style>
