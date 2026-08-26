@@ -10,6 +10,9 @@ from models import (
     ResearchUsage,
     SummaryState,
 )
+from services.adaptive_research_explanation import (
+    build_adaptive_research_explanation,
+)
 from services.adaptive_research_value import (
     apply_adaptive_research_value_stop,
     assess_iteration_research_value,
@@ -236,6 +239,11 @@ def run_adaptive_decision_loop(
                 state.stopping_decision,
                 adaptive_state.iterations,
             )
+        )
+
+        build_adaptive_research_explanation(
+            iteration,
+            state.stopping_decision,
         )
 
     return state

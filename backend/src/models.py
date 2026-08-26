@@ -726,6 +726,12 @@ class AdaptiveResearchIteration:
     adaptive_research_value_status: str = field(default="UNKNOWN")
     adaptive_research_value_reasons: list[str] = field(default_factory=list)
 
+    # Phase 33: stable human/replay explanation of adaptive research value.
+    research_value_summary: str = field(default="")
+    research_value_explanation: list[str] = field(default_factory=list)
+    research_value_observations: list[str] = field(default_factory=list)
+    stopping_explanation: str = field(default="")
+
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )

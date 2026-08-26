@@ -1389,3 +1389,98 @@ def test_adaptive_research_value_metadata_round_trip(
             )
         ]
     )
+
+
+def test_adaptive_research_explanation_round_trip(
+    tmp_path,
+):
+    from models import (
+        AdaptiveResearchIteration,
+        AdaptiveResearchState,
+        SummaryState,
+    )
+    from services.research_store import (
+        SQLiteResearchStore,
+    )
+
+    iteration = AdaptiveResearchIteration(
+        decision_id="dec_explain",
+        iteration_number=2,
+        status="completed",
+        adaptive_research_value_status="LOW_VALUE",
+        research_value_summary=(
+            "This research iteration added limited "
+            "decision-relevant value."
+        ),
+        research_value_explanation=[
+            "retrieval yield: low_yield",
+            "evidence saturation: high_saturation",
+            (
+                "decision information gain: "
+                "no_information_gain"
+            ),
+            "adaptive research value: low_value",
+        ],
+        research_value_observations=[
+            "6 new evidence item(s)",
+            "1 novel claim(s)",
+        ],
+        stopping_explanation=(
+            "Adaptive research stopped because marginal "
+            "research value showed diminishing returns "
+            "across 2 consecutive low-value iteration(s)."
+        ),
+    )
+
+    state = SummaryState(
+        adaptive_research_state=(
+            AdaptiveResearchState(
+                decision_id="dec_explain",
+                iteration_count=2,
+                iterations=[iteration],
+            )
+        )
+    )
+
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    research_id = store.save(
+        state
+    )
+
+    restored = store.get(
+        research_id
+    )
+
+    assert restored is not None
+
+    item = (
+        restored
+        .adaptive_research_state
+        .iterations[0]
+    )
+
+    assert (
+        item.research_value_summary
+        == (
+            "This research iteration added limited "
+            "decision-relevant value."
+        )
+    )
+
+    assert (
+        "adaptive research value: low_value"
+        in item.research_value_explanation
+    )
+
+    assert (
+        "6 new evidence item(s)"
+        in item.research_value_observations
+    )
+
+    assert (
+        "diminishing returns"
+        in item.stopping_explanation
+    )
