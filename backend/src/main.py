@@ -103,6 +103,29 @@ class ResearchReevaluationResponse(BaseModel):
 
 
 
+class ResearchLineageResponse(BaseModel):
+    """Immutable provenance metadata for one research run."""
+
+    research_id: str
+    root_research_id: str
+    parent_research_id: str | None = None
+    version_number: int
+    creation_reason: str
+    created_from_trigger_ids: list[str] = Field(
+        default_factory=list
+    )
+
+
+class ResearchVersionListResponse(BaseModel):
+    """Ordered research versions belonging to one root run."""
+
+    research_id: str
+    root_research_id: str
+    versions: list[ResearchLineageResponse] = Field(
+        default_factory=list
+    )
+
+
 class ResearchResponse(BaseModel):
     """HTTP response containing the generated report and structured tasks."""
 
@@ -279,6 +302,11 @@ class ResearchReplayResponse(BaseModel):
     )
 
     decision_artifact: dict[str, Any] | None = None
+
+    lineage: dict[str, Any] | None = None
+    versions: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
 
 
 def _serialize_v3_value(value: Any) -> Any:
@@ -753,10 +781,49 @@ def create_app() -> FastAPI:
                 detail="Research run not found",
             )
 
-        return _build_research_replay(
+        replay = _build_research_replay(
             research_id,
             state,
         )
+
+        lineage = None
+        versions = []
+
+        get_lineage = getattr(
+            app.state.research_store,
+            "get_lineage",
+            None,
+        )
+
+        if callable(get_lineage):
+            lineage = get_lineage(
+                research_id
+            )
+
+        if lineage is not None:
+            list_lineage = getattr(
+                app.state.research_store,
+                "list_lineage",
+                None,
+            )
+
+            if callable(list_lineage):
+                versions = list_lineage(
+                    lineage.root_research_id
+                )
+
+        replay["lineage"] = (
+            _serialize_v3_value(
+                lineage
+            )
+        )
+
+        replay["versions"] = [
+            _serialize_v3_value(item)
+            for item in versions
+        ]
+
+        return replay
 
 
     @app.get(
@@ -1017,6 +1084,77 @@ def create_app() -> FastAPI:
                 for event in events
             ],
         }
+
+    @app.get(
+        "/research/{research_id}/lineage",
+        response_model=ResearchLineageResponse,
+    )
+    def get_research_lineage(
+        research_id: str,
+    ) -> ResearchLineageResponse:
+        """Return immutable provenance metadata for one research run."""
+
+        lineage = (
+            app.state.research_store.get_lineage(
+                research_id
+            )
+        )
+
+        if lineage is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        return ResearchLineageResponse(
+            **_serialize_v3_value(
+                lineage
+            )
+        )
+
+
+    @app.get(
+        "/research/{research_id}/versions",
+        response_model=ResearchVersionListResponse,
+    )
+    def get_research_versions(
+        research_id: str,
+    ) -> ResearchVersionListResponse:
+        """Return the complete ordered version chain for one run."""
+
+        lineage = (
+            app.state.research_store.get_lineage(
+                research_id
+            )
+        )
+
+        if lineage is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        versions = (
+            app.state.research_store.list_lineage(
+                lineage.root_research_id
+            )
+        )
+
+        return ResearchVersionListResponse(
+            research_id=research_id,
+            root_research_id=(
+                lineage.root_research_id
+            ),
+            versions=[
+                ResearchLineageResponse(
+                    **_serialize_v3_value(
+                        item
+                    )
+                )
+                for item in versions
+            ],
+        )
+
 
     @app.post(
         "/research/{research_id}/reevaluate",
