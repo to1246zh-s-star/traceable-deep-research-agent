@@ -24,6 +24,7 @@ from services.reevaluation_preparation import (
 from config import Configuration, SearchAPI
 from services.decision_artifact import build_decision_artifact
 from services.execution_trace import ExecutionTraceService
+from services.decision_version_diff import compare_research_versions
 from services.research_store import SQLiteResearchStore
 from services.llm_preflight import (
     LLMPreflightGuard,
@@ -101,6 +102,64 @@ class ResearchReevaluationResponse(BaseModel):
     reactivation: dict[str, Any]
     lineage: dict[str, Any] | None = None
 
+
+
+class VersionFieldChangeResponse(BaseModel):
+    """One deterministic structural change between research versions."""
+
+    field_name: str
+    change_type: str
+    before: Any = None
+    after: Any = None
+
+
+class ResearchVersionDiffResponse(BaseModel):
+    """Deterministic structural diff between two persisted runs."""
+
+    source_research_id: str
+    target_research_id: str
+    same_lineage: bool
+    has_changes: bool
+
+    decision_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    readiness_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    recommendation_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    research_gap_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    evidence_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    assumption_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    trigger_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    architecture_changes: list[
+        VersionFieldChangeResponse
+    ] = Field(default_factory=list)
+
+    unchanged_sections: list[str] = Field(
+        default_factory=list
+    )
+
+    summary_lines: list[str] = Field(
+        default_factory=list
+    )
 
 
 class ResearchLineageResponse(BaseModel):
@@ -1084,6 +1143,81 @@ def create_app() -> FastAPI:
                 for event in events
             ],
         }
+
+    @app.get(
+        "/research/{target_research_id}/diff/{source_research_id}",
+        response_model=ResearchVersionDiffResponse,
+    )
+    def get_research_version_diff(
+        target_research_id: str,
+        source_research_id: str,
+    ) -> ResearchVersionDiffResponse:
+        """Compare two persisted research runs deterministically."""
+
+        source_state = (
+            app.state.research_store.get(
+                source_research_id
+            )
+        )
+
+        if source_state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Source research run not found",
+            )
+
+        target_state = (
+            app.state.research_store.get(
+                target_research_id
+            )
+        )
+
+        if target_state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Target research run not found",
+            )
+
+        source_lineage = None
+        target_lineage = None
+
+        get_lineage = getattr(
+            app.state.research_store,
+            "get_lineage",
+            None,
+        )
+
+        if callable(get_lineage):
+            source_lineage = get_lineage(
+                source_research_id
+            )
+            target_lineage = get_lineage(
+                target_research_id
+            )
+
+        same_lineage = bool(
+            source_lineage is not None
+            and target_lineage is not None
+            and source_lineage.root_research_id
+            == target_lineage.root_research_id
+        )
+
+        diff = compare_research_versions(
+            source_research_id=(
+                source_research_id
+            ),
+            source_state=source_state,
+            target_research_id=(
+                target_research_id
+            ),
+            target_state=target_state,
+        )
+
+        return ResearchVersionDiffResponse(
+            same_lineage=same_lineage,
+            **_serialize_v3_value(diff),
+        )
+
 
     @app.get(
         "/research/{research_id}/lineage",
