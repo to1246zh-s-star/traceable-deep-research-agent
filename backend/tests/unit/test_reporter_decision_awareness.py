@@ -177,3 +177,109 @@ def test_non_decision_report_prompt_stays_legacy_compatible():
         "研究主题：Explain transformers"
         in prompt
     )
+
+
+class FailingAgent:
+    def __init__(self):
+        self.clear_calls = 0
+
+    def run(self, prompt):
+        raise RuntimeError("provider rate limited")
+
+    def clear_history(self):
+        self.clear_calls += 1
+
+
+class EmptyAgent:
+    def run(self, prompt):
+        return ""
+
+    def clear_history(self):
+        pass
+
+
+def test_report_llm_failure_returns_deterministic_fallback():
+    agent = FailingAgent()
+
+    service = ReportingService(
+        agent,
+        FakeConfig(),
+    )
+
+    state = make_state("CONFLICTED")
+
+    report = service.generate_report(state)
+
+    assert "# 研究报告" in report
+    assert (
+        "Decision readiness: **CONFLICTED**"
+        in report
+    )
+    assert (
+        "不构成最终技术选型"
+        in report
+    )
+    assert "Evidence summary" in report
+    assert "Source summary" in report
+
+
+def test_report_llm_failure_does_not_invent_winner():
+    service = ReportingService(
+        FailingAgent(),
+        FakeConfig(),
+    )
+
+    report = service.generate_report(
+        make_state("CONFLICTED")
+    )
+
+    assert "推荐顺序：" not in report
+    assert "最终选择为" not in report
+    assert "首选 A" not in report
+    assert "首选 B" not in report
+
+
+def test_empty_report_output_uses_fallback():
+    service = ReportingService(
+        EmptyAgent(),
+        FakeConfig(),
+    )
+
+    report = service.generate_report(
+        make_state("CONFLICTED")
+    )
+
+    assert "# 研究报告" in report
+    assert (
+        "Decision readiness: **CONFLICTED**"
+        in report
+    )
+
+
+def test_non_decision_report_failure_also_degrades_gracefully():
+    service = ReportingService(
+        FailingAgent(),
+        FakeConfig(),
+    )
+
+    state = SummaryState(
+        research_topic="Explain transformers",
+        todo_items=[
+            TodoItem(
+                id=1,
+                title="Attention",
+                intent="Explain attention",
+                query="transformer attention",
+                status="completed",
+                summary="Attention summary",
+                sources_summary="Attention sources",
+            )
+        ],
+    )
+
+    report = service.generate_report(state)
+
+    assert "# 研究报告" in report
+    assert "Attention summary" in report
+    assert "Attention sources" in report
+    assert "Decision readiness" not in report

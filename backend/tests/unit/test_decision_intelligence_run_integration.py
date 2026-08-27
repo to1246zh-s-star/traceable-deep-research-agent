@@ -320,3 +320,57 @@ def test_run_adaptive_loop_failure_does_not_block_report():
     )
     assert "adaptive_loop" in call_order
     assert "report" in call_order
+
+
+def test_run_report_provider_failure_uses_reporting_fallback():
+    agent = make_agent()
+
+    from services.reporter import ReportingService
+
+    class FailingReportAgent:
+        def run(self, prompt):
+            raise RuntimeError(
+                "429 rate limited"
+            )
+
+        def clear_history(self):
+            pass
+
+    class ReportConfig:
+        strip_thinking_tokens = False
+
+    agent.reporting = ReportingService(
+        FailingReportAgent(),
+        ReportConfig(),
+    )
+
+    agent._attach_decision_case = (
+        lambda state: None
+    )
+
+    def execute_task(
+        state,
+        task,
+        *,
+        emit_stream,
+        step=None,
+    ):
+        task.status = "completed"
+        task.summary = "Recovered task summary"
+        task.sources_summary = "Recovered sources"
+
+        if False:
+            yield None
+
+    agent._execute_task = execute_task
+
+    result = agent.run(
+        "Explain a technical topic"
+    )
+
+    assert result.report_markdown
+    assert "# 研究报告" in result.report_markdown
+    assert (
+        "Recovered task summary"
+        in result.report_markdown
+    )
