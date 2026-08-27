@@ -377,6 +377,37 @@ class RecommendationRobustness:
 
 
 @dataclass(kw_only=True)
+class DecisionArtifact:
+    """Deterministic ADR projection of persisted decision state."""
+
+    decision_id: str
+    title: str
+    status: str
+
+    decision_question: str
+    recommendation: Optional[str] = field(default=None)
+
+    context_lines: list[str] = field(default_factory=list)
+    candidate_lines: list[str] = field(default_factory=list)
+    criterion_lines: list[str] = field(default_factory=list)
+    constraint_lines: list[str] = field(default_factory=list)
+
+    comparison_lines: list[str] = field(default_factory=list)
+    readiness_lines: list[str] = field(default_factory=list)
+    robustness_lines: list[str] = field(default_factory=list)
+    sensitivity_lines: list[str] = field(default_factory=list)
+
+    assumption_lines: list[str] = field(default_factory=list)
+    risk_lines: list[str] = field(default_factory=list)
+    reevaluation_lines: list[str] = field(default_factory=list)
+
+    evidence_lines: list[str] = field(default_factory=list)
+
+    markdown: str = field(default="")
+
+
+
+@dataclass(kw_only=True)
 class SourceQuality:
     """Quality assessment for the source behind one Evidence item."""
 
