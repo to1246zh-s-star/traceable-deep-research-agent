@@ -34,6 +34,22 @@ def build_decision_reporting_context(
         readiness.status or "UNKNOWN"
     ).upper()
 
+    recommendation = (
+        decision.recommendation.strip()
+        if isinstance(
+            decision.recommendation,
+            str,
+        )
+        and decision.recommendation.strip()
+        else None
+    )
+
+    definitive_allowed = (
+        readiness_status
+        in DEFINITIVE_READY_STATUSES
+        and recommendation is not None
+    )
+
     stopping = state.stopping_decision
     analysis = state.research_analysis
 
@@ -60,11 +76,12 @@ def build_decision_reporting_context(
         readiness.blocking_reasons or []
     )
 
-    if readiness_status in DEFINITIVE_READY_STATUSES:
+    if definitive_allowed:
         policy_lines = [
             "REPORTING POLICY: DEFINITIVE_RECOMMENDATION_ALLOWED",
             (
-                "The deterministic decision-readiness state is READY. "
+                "The deterministic decision-readiness state is READY "
+                "and a structured recommendation is present. "
                 "A definitive recommendation is permitted, but only when "
                 "grounded in the supplied evidence."
             ),
@@ -113,6 +130,11 @@ def build_decision_reporting_context(
         "=== DETERMINISTIC DECISION INTELLIGENCE CONTEXT ===",
         f"Decision question: {decision.question}",
         f"Readiness status: {readiness_status}",
+        (
+            "Structured recommendation: PRESENT"
+            if recommendation is not None
+            else "Structured recommendation: MISSING"
+        ),
         f"Readiness score: {readiness.overall_score:.3f}",
         f"Criterion coverage: {readiness.criterion_coverage:.3f}",
         f"Evidence quality: {readiness.evidence_quality:.3f}",

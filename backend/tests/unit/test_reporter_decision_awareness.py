@@ -128,8 +128,15 @@ def test_ready_report_prompt_allows_definitive_policy():
         FakeConfig(),
     )
 
+    state = make_state(
+        "READY"
+    )
+    state.decision_case.recommendation = (
+        "Choose candidate A"
+    )
+
     service.generate_report(
-        make_state("READY")
+        state
     )
 
     prompt = agent.prompts[0]
@@ -399,3 +406,44 @@ def test_open_llm_circuit_skips_report_provider_call():
     ]
 
     assert len(skips) == 1
+
+
+def test_ready_report_without_recommendation_stays_provisional():
+    agent = RecordingAgent()
+
+    service = ReportingService(
+        agent,
+        FakeConfig(),
+    )
+
+    state = make_state(
+        "READY"
+    )
+
+    assert (
+        state.decision_case.recommendation
+        is None
+    )
+
+    service.generate_report(
+        state
+    )
+
+    prompt = agent.prompts[0]
+
+    assert (
+        "Readiness status: READY"
+        in prompt
+    )
+    assert (
+        "Structured recommendation: MISSING"
+        in prompt
+    )
+    assert (
+        "PROVISIONAL_ONLY"
+        in prompt
+    )
+    assert (
+        "DEFINITIVE_RECOMMENDATION_ALLOWED"
+        not in prompt
+    )

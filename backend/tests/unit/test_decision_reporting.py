@@ -99,6 +99,10 @@ def test_ready_allows_definitive_recommendation():
         ),
     )
 
+    state.decision_case.recommendation = (
+        "Choose candidate A"
+    )
+
     context = build_decision_reporting_context(
         state
     )
@@ -262,4 +266,107 @@ def test_falls_back_to_analysis_gap_count_without_stopping():
     assert (
         "Actionable research gaps: 1"
         in context
+    )
+
+
+
+def _make_ready_reporting_state() -> SummaryState:
+    return SummaryState(
+        research_topic="Choose A or B",
+        decision_case=DecisionCase(
+            decision_id="dec_ready_reporting",
+            question="Choose A or B",
+        ),
+        decision_readiness=DecisionReadiness(
+            decision_id="dec_ready_reporting",
+            overall_score=0.9,
+            status="READY",
+            criterion_coverage=0.95,
+            evidence_quality=0.9,
+            applicability=0.9,
+            agreement_score=0.9,
+            decision_margin=0.2,
+            blocking_reasons=[],
+        ),
+    )
+
+
+
+def test_ready_without_structured_recommendation_is_provisional():
+    state = _make_ready_reporting_state()
+
+    assert (
+        state.decision_case.recommendation
+        is None
+    )
+
+    context = (
+        build_decision_reporting_context(
+            state
+        )
+    )
+
+    assert (
+        "Readiness status: READY"
+        in context
+    )
+    assert (
+        "Structured recommendation: MISSING"
+        in context
+    )
+    assert (
+        "PROVISIONAL_ONLY"
+        in context
+    )
+    assert (
+        "DEFINITIVE_RECOMMENDATION_ALLOWED"
+        not in context
+    )
+
+
+def test_ready_with_blank_recommendation_is_provisional():
+    state = _make_ready_reporting_state()
+
+    state.decision_case.recommendation = "   "
+
+    context = (
+        build_decision_reporting_context(
+            state
+        )
+    )
+
+    assert (
+        "Structured recommendation: MISSING"
+        in context
+    )
+    assert (
+        "PROVISIONAL_ONLY"
+        in context
+    )
+
+
+def test_ready_with_structured_recommendation_is_definitive():
+    state = _make_ready_reporting_state()
+
+    state.decision_case.recommendation = (
+        "Choose candidate A"
+    )
+
+    context = (
+        build_decision_reporting_context(
+            state
+        )
+    )
+
+    assert (
+        "Structured recommendation: PRESENT"
+        in context
+    )
+    assert (
+        "DEFINITIVE_RECOMMENDATION_ALLOWED"
+        in context
+    )
+    assert (
+        "PROVISIONAL_ONLY"
+        not in context
     )
