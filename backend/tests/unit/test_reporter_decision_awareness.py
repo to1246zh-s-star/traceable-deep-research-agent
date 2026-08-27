@@ -347,3 +347,55 @@ def test_report_fallback_records_runtime_notice():
     assert notice["metadata"] == {
         "fallback": "deterministic",
     }
+
+
+def test_open_llm_circuit_skips_report_provider_call():
+    class MustNotRunAgent:
+        def __init__(self):
+            self.calls = 0
+
+        def run(self, prompt):
+            self.calls += 1
+            raise AssertionError(
+                "report provider must not be called"
+            )
+
+        def clear_history(self):
+            pass
+
+    agent = MustNotRunAgent()
+
+    service = ReportingService(
+        agent,
+        FakeConfig(),
+    )
+
+    state = make_state(
+        "CONFLICTED"
+    )
+
+    state.llm_runtime_circuit = {
+        "status": "open",
+        "error_type": "quota_exceeded",
+        "trigger_stage": "task_summarization",
+    }
+
+    report = service.generate_report(
+        state
+    )
+
+    assert agent.calls == 0
+    assert report
+
+    skips = [
+        notice
+        for notice in state.runtime_notices
+        if (
+            notice["stage"]
+            == "report_generation"
+            and notice["error_type"]
+            == "llm_circuit_open"
+        )
+    ]
+
+    assert len(skips) == 1

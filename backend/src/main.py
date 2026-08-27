@@ -223,6 +223,10 @@ class ResearchReplayResponse(BaseModel):
         default_factory=list
     )
 
+    llm_runtime_circuit: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
 
 def _serialize_v3_value(value: Any) -> Any:
     """Serialize V3 decision dataclasses into JSON-safe structures."""
@@ -514,6 +518,13 @@ def _build_research_replay(
                 [],
             )
         ],
+        "llm_runtime_circuit": dict(
+            getattr(
+                state,
+                "llm_runtime_circuit",
+                {},
+            )
+        ),
     }
 
 

@@ -13,6 +13,11 @@ from utils import strip_thinking_tokens
 from services.text_processing import strip_tool_calls
 from services.decision_reporting import build_decision_reporting_context
 from services.runtime_notices import record_runtime_notice
+from services.llm_runtime_circuit import (
+    is_llm_circuit_open,
+    open_llm_circuit_from_error,
+    record_circuit_skip,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +87,27 @@ class ReportingService:
             f"如需输出汇总结论，可追加调用：[TOOL_CALL:note:{create_conclusion_template}] 保存报告要点。"
         )
 
+        if is_llm_circuit_open(state):
+            record_circuit_skip(
+                state,
+                stage="report_generation",
+            )
+            return self._build_fallback_report(
+                state
+            )
+
         try:
             response = self._agent.run(prompt)
             self._agent.clear_history()
         except Exception as exc:
             logger.exception(
                 "Final report LLM failed; using deterministic fallback report"
+            )
+
+            open_llm_circuit_from_error(
+                state,
+                error=exc,
+                trigger_stage="report_generation",
             )
 
             record_runtime_notice(

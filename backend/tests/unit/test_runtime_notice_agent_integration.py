@@ -55,18 +55,54 @@ def test_integration_failure_records_notice():
 
     assert result == []
 
-    assert len(
-        state.runtime_notices
-    ) == 1
+    integration_notices = [
+        notice
+        for notice in state.runtime_notices
+        if notice["stage"]
+        == "integration_assessment"
+    ]
 
-    notice = state.runtime_notices[0]
+    assert len(integration_notices) == 1
 
-    assert notice["stage"] == (
-        "integration_assessment"
-    )
+    notice = integration_notices[0]
 
     assert notice["error_type"] == (
         "quota_exceeded"
     )
 
     assert notice["degraded"] is True
+
+    circuit_notices = [
+        notice
+        for notice in state.runtime_notices
+        if notice["stage"]
+        == "llm_runtime_circuit"
+    ]
+
+    assert len(circuit_notices) == 1
+
+    circuit_notice = circuit_notices[0]
+
+    assert circuit_notice["error_type"] == (
+        "quota_exceeded"
+    )
+
+    assert circuit_notice["metadata"][
+        "status"
+    ] == "open"
+
+    assert circuit_notice["metadata"][
+        "trigger_stage"
+    ] == "integration_assessment"
+
+    assert (
+        state.llm_runtime_circuit["status"]
+        == "open"
+    )
+
+    assert (
+        state.llm_runtime_circuit[
+            "error_type"
+        ]
+        == "quota_exceeded"
+    )

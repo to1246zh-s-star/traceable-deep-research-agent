@@ -50,6 +50,11 @@ from services.decision_input_builder import (
 from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
 from services.runtime_notices import record_runtime_notice
+from services.llm_runtime_circuit import (
+    is_llm_circuit_open,
+    open_llm_circuit_from_error,
+    record_circuit_skip,
+)
 from services.execution_trace import ExecutionTraceService
 from services.adaptive_decision_loop import run_adaptive_decision_loop
 from services.adaptive_research import (
@@ -255,6 +260,13 @@ class DeepResearchAgent:
         if extractor is None:
             return None
 
+        if is_llm_circuit_open(state):
+            record_circuit_skip(
+                state,
+                stage="technical_context_extraction",
+            )
+            return None
+
         try:
             return extractor.extract(
                 state.research_topic,
@@ -264,6 +276,12 @@ class DeepResearchAgent:
             logger.exception(
                 "Technical context extraction failed; "
                 "continuing without architecture context"
+            )
+
+            open_llm_circuit_from_error(
+                state,
+                error=exc,
+                trigger_stage="technical_context_extraction",
             )
 
             record_runtime_notice(
@@ -292,6 +310,13 @@ class DeepResearchAgent:
         if assessor is None:
             return []
 
+        if is_llm_circuit_open(state):
+            record_circuit_skip(
+                state,
+                stage="integration_assessment",
+            )
+            return []
+
         try:
             return assessor.assess(
                 state,
@@ -302,6 +327,12 @@ class DeepResearchAgent:
             logger.exception(
                 "Integration assessment failed; "
                 "continuing without architecture assessment"
+            )
+
+            open_llm_circuit_from_error(
+                state,
+                error=exc,
+                trigger_stage="integration_assessment",
             )
 
             record_runtime_notice(
@@ -412,20 +443,36 @@ class DeepResearchAgent:
         )
 
         try:
-            newly_interpreted = (
-                self.extract_semantic_signals(
+            if (
+                pending_proposals
+                and is_llm_circuit_open(state)
+            ):
+                record_circuit_skip(
                     state,
-                    decision,
-                    pending_proposals,
+                    stage="semantic_signal_extraction",
                 )
-                if pending_proposals
-                else []
-            )
+                newly_interpreted = []
+            else:
+                newly_interpreted = (
+                    self.extract_semantic_signals(
+                        state,
+                        decision,
+                        pending_proposals,
+                    )
+                    if pending_proposals
+                    else []
+                )
         except Exception as exc:
             logger.exception(
                 "Semantic signal extraction failed; "
                 "preserving reusable semantics and "
                 "conservative neutral proposals"
+            )
+
+            open_llm_circuit_from_error(
+                state,
+                error=exc,
+                trigger_stage="semantic_signal_extraction",
             )
 
             record_runtime_notice(
@@ -447,14 +494,27 @@ class DeepResearchAgent:
 
         if constraint_results is None and decision.constraints:
             try:
-                constraint_results = self.constraint_resolver.resolve(
-                    state,
-                    decision,
-                )
+                if is_llm_circuit_open(state):
+                    record_circuit_skip(
+                        state,
+                        stage="constraint_resolution",
+                    )
+                    constraint_results = {}
+                else:
+                    constraint_results = self.constraint_resolver.resolve(
+                        state,
+                        decision,
+                    )
             except Exception as exc:
                 logger.exception(
                     "Constraint resolution failed; "
                     "preserving unresolved constraints"
+                )
+
+                open_llm_circuit_from_error(
+                    state,
+                    error=exc,
+                    trigger_stage="constraint_resolution",
                 )
 
                 record_runtime_notice(
@@ -1533,6 +1593,73 @@ class DeepResearchAgent:
         summary_text: str | None = None
         trace.current_stage = "summarization"
 
+        if is_llm_circuit_open(state):
+            task.status = "partial"
+
+            if (
+                "summarization_skipped:llm_circuit_open"
+                not in task.notices
+            ):
+                task.notices.append(
+                    "summarization_skipped:"
+                    "llm_circuit_open"
+                )
+
+            task.summary = (
+                "暂无可用信息：检索已完成并保留了来源与证据，"
+                "但本次研究运行的 LLM circuit 已打开，"
+                "因此跳过任务总结。"
+            )
+
+            record_circuit_skip(
+                state,
+                stage="task_summarization",
+            )
+
+            self._emit_execution_event(
+                state,
+                trace_id=trace.trace_id,
+                task_id=task.id,
+                event_type="task_partial",
+                stage="summarization",
+                metadata={
+                    "error_type": "llm_circuit_open",
+                    "evidence_preserved": len(
+                        evidence_items
+                    ),
+                    "sources_preserved": bool(
+                        sources_summary
+                    ),
+                    "llm_call_skipped": True,
+                },
+            )
+
+            self._finish_execution_trace(
+                trace,
+                status="partial",
+                started_counter=started_counter,
+            )
+
+            if emit_stream:
+                for event in self._drain_execution_events(
+                    state
+                ):
+                    yield event
+
+                yield {
+                    "type": "task_status",
+                    "task_id": task.id,
+                    "status": "partial",
+                    "title": task.title,
+                    "intent": task.intent,
+                    "note_id": task.note_id,
+                    "note_path": task.note_path,
+                    "step": step,
+                    "error_type": "llm_circuit_open",
+                }
+
+            return
+
         self._emit_execution_event(
             state,
             trace_id=trace.trace_id,
@@ -1615,6 +1742,12 @@ class DeepResearchAgent:
             # research task.
             error_type = classify_execution_error(
                 exc
+            )
+
+            open_llm_circuit_from_error(
+                state,
+                error=exc,
+                trigger_stage="task_summarization",
             )
 
             task.status = "partial"

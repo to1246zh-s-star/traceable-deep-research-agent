@@ -906,6 +906,16 @@ class SummaryState:
     # Structured observability for optional runtime degradation.
     # Notices must never become business inputs for decision scoring.
     runtime_notices: list[dict[str, Any]] = field(default_factory=list)
+
+    # Per-run LLM circuit. Observability/orchestration state only;
+    # it must never participate in candidate scoring or readiness.
+    llm_runtime_circuit: dict[str, Any] = field(
+        default_factory=lambda: {
+            "status": "closed",
+            "error_type": None,
+            "trigger_stage": None,
+        }
+    )
     evidence_items: list[Evidence] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
 
