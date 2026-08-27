@@ -471,6 +471,14 @@ export interface DecisionIntelligenceResponse {
   adaptive_research_state: AdaptiveResearchStateResponse | null;
 }
 
+export interface RuntimeNoticeResponse {
+  stage: string;
+  error_type: string;
+  message: string;
+  degraded: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ResearchReplayResponse {
   research_id: string;
   research_topic: string;
@@ -480,6 +488,7 @@ export interface ResearchReplayResponse {
   evidence_count: number;
   tasks: ResearchReplayTaskResponse[];
   timeline: ResearchReplayEventResponse[];
+  runtime_notices?: RuntimeNoticeResponse[];
   decision: DecisionIntelligenceResponse | null;
 }
 

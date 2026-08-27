@@ -2038,6 +2038,90 @@ async function selectTrace(
   }
 }
 
+
+function formatRuntimeStage(stage: string): string {
+  const labels: Record<string, string> = {
+    decision_case_extraction: "Decision Detection",
+    technical_context_extraction: "Technical Context",
+    integration_assessment: "Integration Assessment",
+    semantic_signal_extraction: "Evidence Interpretation",
+    constraint_resolution: "Constraint Resolution",
+    decision_intelligence: "Decision Intelligence",
+    report_generation: "Report Generation",
+  };
+
+  return labels[stage] ?? formatResearchStatusLabel(stage);
+}
+
+function formatRuntimeErrorType(errorType: string): string {
+  const labels: Record<string, string> = {
+    quota_exceeded: "Provider quota exhausted",
+    rate_limited: "Provider rate limited",
+    timeout: "Provider timeout",
+    authentication: "Provider authentication failure",
+    provider_unavailable: "Provider unavailable",
+    provider_error: "Provider error",
+    unknown_error: "Runtime provider error",
+  };
+
+  return labels[errorType] ?? formatResearchStatusLabel(errorType);
+}
+
+function runtimeNoticeExplanation(
+  stage: string,
+  errorType: string,
+  metadata?: Record<string, unknown>
+): string {
+  if (
+    stage === "report_generation" &&
+    metadata?.fallback === "deterministic"
+  ) {
+    return "The final report model was unavailable, so a deterministic fallback report was produced from the preserved research state.";
+  }
+
+  const stageMessages: Record<string, string> = {
+    decision_case_extraction:
+      "Decision-specific enrichment was unavailable. The normal research workflow continued.",
+    technical_context_extraction:
+      "Architecture context could not be enriched. The workflow continued without this optional context.",
+    integration_assessment:
+      "Architecture and migration assessment was unavailable. Existing evidence and decision state were preserved.",
+    semantic_signal_extraction:
+      "Semantic interpretation degraded. Conservative evidence handling was preserved.",
+    constraint_resolution:
+      "Constraint resolution was unavailable. Unresolved constraints were preserved rather than treated as violations.",
+    decision_intelligence:
+      "Decision enrichment degraded, but the normal research report workflow continued.",
+  };
+
+  if (stageMessages[stage]) {
+    return stageMessages[stage];
+  }
+
+  if (errorType === "rate_limited") {
+    return "The external model provider temporarily limited requests. Available research state was preserved.";
+  }
+
+  if (errorType === "quota_exceeded") {
+    return "The external model provider reported insufficient quota. Available research state was preserved.";
+  }
+
+  return "An optional runtime component degraded. Available research state was preserved.";
+}
+
+function runtimeNoticeClass(errorType: string): string {
+  if (
+    errorType === "quota_exceeded" ||
+    errorType === "rate_limited" ||
+    errorType === "timeout" ||
+    errorType === "provider_unavailable"
+  ) {
+    return "runtime-notice-warning";
+  }
+
+  return "runtime-notice-neutral";
+}
+
 async function loadResearchReplay(
   targetResearchId: string
 ): Promise<void> {
@@ -5520,6 +5604,99 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
   .research-value-badge {
     white-space: normal;
     text-align: right;
+  }
+}
+
+
+
+.runtime-degradation-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+  border-radius: 14px;
+}
+
+.runtime-degradation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.runtime-degradation-heading h4 {
+  margin: 0.15rem 0 0;
+}
+
+.runtime-degradation-description {
+  margin: 0.35rem 0 0;
+  max-width: 720px;
+  opacity: 0.72;
+  line-height: 1.5;
+}
+
+.runtime-degradation-count {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  opacity: 0.72;
+}
+
+.runtime-notice-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.runtime-notice-card {
+  padding: 0.8rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.runtime-notice-warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.runtime-notice-neutral {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.runtime-notice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.runtime-notice-header strong {
+  font-size: 0.92rem;
+}
+
+.runtime-notice-badge {
+  flex: 0 0 auto;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.runtime-notice-card p {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  opacity: 0.78;
+}
+
+@media (max-width: 720px) {
+  .runtime-degradation-heading,
+  .runtime-notice-header {
+    flex-direction: column;
+  }
+
+  .runtime-notice-badge {
+    align-self: flex-start;
   }
 }
 
