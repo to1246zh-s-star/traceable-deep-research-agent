@@ -1306,6 +1306,8 @@ class DeepResearchAgent:
             adaptive_state,
             starting_task_id=starting_task_id,
             max_tasks=max_tasks,
+            research_budget=state.research_budget,
+            research_usage=state.research_usage,
         )
 
         if iteration is None:
