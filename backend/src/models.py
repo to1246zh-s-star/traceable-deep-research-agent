@@ -516,7 +516,6 @@ class ReevaluationReactivationDecision:
     )
 
 
-
 @dataclass(kw_only=True)
 class DecisionArtifact:
     """Deterministic ADR projection of persisted decision state."""
@@ -850,6 +849,23 @@ class ResearchAnalysis:
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
+
+
+@dataclass(kw_only=True)
+class ReevaluationPreparation:
+    """Deterministic preparation result for one decision re-evaluation."""
+
+    decision_id: str
+
+    assessment: ReevaluationAssessment
+    plan: ReevaluationPlan
+
+    merged_analysis: ResearchAnalysis
+    reactivation: ReevaluationReactivationDecision
+
+    reevaluation_gaps: list[ResearchGap] = field(
+        default_factory=list
+    )
 
 @dataclass(kw_only=True)
 class AdaptiveResearchIteration:
