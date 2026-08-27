@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, is_dataclass
 import sys
+from copy import deepcopy
 from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any, AsyncIterator, Dict, Iterator, Optional
@@ -16,6 +17,10 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from agent import DeepResearchAgent
+from models import ReevaluationRequest
+from services.reevaluation_preparation import (
+    prepare_reevaluation,
+)
 from config import Configuration, SearchAPI
 from services.decision_artifact import build_decision_artifact
 from services.execution_trace import ExecutionTraceService
@@ -51,6 +56,50 @@ class ResearchRequest(BaseModel):
         default=None,
         description="Override the default search backend configured via env",
     )
+
+
+class ResearchReevaluationRequest(BaseModel):
+    """Structured observations for re-evaluating one stored decision."""
+
+    observed_trigger_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    changed_source_fields: dict[
+        str,
+        list[str],
+    ] = Field(
+        default_factory=dict
+    )
+
+    observed_facts: list[str] = Field(
+        default_factory=list
+    )
+
+    search_api: SearchAPI | None = Field(
+        default=None,
+        description=(
+            "Optional search backend override "
+            "for executed follow-up research"
+        ),
+    )
+
+
+class ResearchReevaluationResponse(BaseModel):
+    """Result of preparing or executing decision re-evaluation."""
+
+    source_research_id: str
+
+    research_id: str | None = None
+
+    status: str
+    eligible: bool
+    executed: bool = False
+
+    assessment: dict[str, Any]
+    plan: dict[str, Any]
+    reactivation: dict[str, Any]
+
 
 
 class ResearchResponse(BaseModel):
@@ -967,6 +1016,192 @@ def create_app() -> FastAPI:
                 for event in events
             ],
         }
+
+    @app.post(
+        "/research/{research_id}/reevaluate",
+        response_model=ResearchReevaluationResponse,
+    )
+    def reevaluate_research(
+        research_id: str,
+        payload: ResearchReevaluationRequest,
+    ) -> ResearchReevaluationResponse:
+        """
+        Re-evaluate one persisted technical decision.
+
+        Historical research is immutable at this API boundary:
+        execution always happens on a deep-copied working state and,
+        when research is actually executed, is saved as a new
+        research_id.
+        """
+
+        historical_state = (
+            app.state.research_store.get(
+                research_id
+            )
+        )
+
+        if historical_state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        if historical_state.decision_case is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Research run has no "
+                    "technical decision"
+                ),
+            )
+
+        if historical_state.research_analysis is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Research run has no "
+                    "research analysis"
+                ),
+            )
+
+        if (
+            historical_state.adaptive_research_state
+            is None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Research run has no "
+                    "adaptive research state"
+                ),
+            )
+
+        # Never mutate the historical replay state.
+        working_state = deepcopy(
+            historical_state
+        )
+
+        decision = working_state.decision_case
+
+        request = ReevaluationRequest(
+            decision_id=decision.decision_id,
+            observed_trigger_ids=list(
+                payload.observed_trigger_ids
+            ),
+            changed_source_fields={
+                source_type: list(fields)
+                for source_type, fields
+                in payload.changed_source_fields.items()
+            },
+            observed_facts=list(
+                payload.observed_facts
+            ),
+        )
+
+        preparation = prepare_reevaluation(
+            decision,
+            working_state.research_analysis,
+            working_state.adaptive_research_state,
+            request,
+            list(
+                working_state
+                .decision_reevaluation_triggers
+            ),
+            research_budget=(
+                working_state.research_budget
+            ),
+            research_usage=(
+                working_state.research_usage
+            ),
+            stopping_decision=(
+                working_state.stopping_decision
+            ),
+        )
+
+        response_base = {
+            "source_research_id": research_id,
+            "status": preparation.assessment.status,
+            "eligible": (
+                preparation.reactivation.eligible
+            ),
+            "assessment": _serialize_v3_value(
+                preparation.assessment
+            ),
+            "plan": _serialize_v3_value(
+                preparation.plan
+            ),
+            "reactivation": _serialize_v3_value(
+                preparation.reactivation
+            ),
+        }
+
+        # Assessment/plan are useful even when execution is blocked,
+        # but no new research version is created for a no-op.
+        if (
+            preparation.reactivation.status
+            != "ELIGIBLE"
+            or not preparation.reactivation.eligible
+            or not preparation.reactivation.actionable_gap_ids
+        ):
+            return ResearchReevaluationResponse(
+                **response_base,
+                research_id=None,
+                executed=False,
+            )
+
+        overrides: Dict[str, Any] = {}
+
+        if payload.search_api is not None:
+            overrides["search_api"] = (
+                payload.search_api
+            )
+
+        reevaluation_config = (
+            Configuration.from_env(
+                overrides=overrides
+            )
+        )
+
+        agent = DeepResearchAgent(
+            config=reevaluation_config
+        )
+
+        ensure_llm_available(
+            agent,
+            reevaluation_config,
+        )
+
+        agent.execute_prepared_reevaluation(
+            working_state,
+            preparation,
+        )
+
+        # The historical report describes the old decision state.
+        # Generate a fresh report for the new research version.
+        report = agent.reporting.generate_report(
+            working_state
+        )
+
+        working_state.structured_report = report
+        working_state.running_summary = report
+
+        # Old report-note references must never point at the newly
+        # generated version.
+        working_state.report_note_id = None
+        working_state.report_note_path = None
+
+        new_research_id = (
+            app.state.research_store.save(
+                working_state
+            )
+        )
+
+        return ResearchReevaluationResponse(
+            **response_base,
+            research_id=new_research_id,
+            executed=True,
+        )
+
 
     @app.post("/research", response_model=ResearchResponse)
     def run_research(payload: ResearchRequest) -> ResearchResponse:

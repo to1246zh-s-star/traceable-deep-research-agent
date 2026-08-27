@@ -35,6 +35,7 @@ from models import (
     EvidenceSignal,
     ResearchBudget,
     ResearchUsage,
+    ReevaluationPreparation,
     SummaryState,
     SummaryStateOutput,
     TodoItem,
@@ -57,6 +58,9 @@ from services.llm_runtime_circuit import (
 )
 from services.execution_trace import ExecutionTraceService
 from services.adaptive_decision_loop import run_adaptive_decision_loop
+from services.reevaluation_execution import (
+    activate_prepared_reevaluation,
+)
 from services.adaptive_research import (
     plan_adaptive_iteration,
     record_iteration_finished,
@@ -1257,6 +1261,53 @@ class DeepResearchAgent:
         return self._get_execution_trace_service().summarize_events(
             state,
         )
+
+    def execute_prepared_reevaluation(
+        self,
+        state: SummaryState,
+        preparation: ReevaluationPreparation,
+        *,
+        max_tasks_per_iteration: int = 3,
+    ) -> SummaryState:
+        """
+        Activate and execute an already-prepared re-evaluation.
+
+        Preparation remains authoritative for whether adaptive
+        research may be reopened.
+
+        BLOCKED / UNKNOWN / otherwise non-eligible preparation
+        is a complete execution no-op.
+        """
+
+        reactivation = preparation.reactivation
+
+        if (
+            reactivation.status != "ELIGIBLE"
+            or not reactivation.eligible
+            or not reactivation.actionable_gap_ids
+        ):
+            return state
+
+        activate_prepared_reevaluation(
+            state,
+            preparation,
+        )
+
+        stopping = state.stopping_decision
+
+        if (
+            stopping is None
+            or not stopping.should_continue
+        ):
+            return state
+
+        return self.execute_adaptive_decision_loop(
+            state,
+            max_tasks_per_iteration=(
+                max_tasks_per_iteration
+            ),
+        )
+
 
     def execute_adaptive_decision_loop(
         self,
