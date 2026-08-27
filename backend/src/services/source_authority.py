@@ -222,16 +222,26 @@ def recognize_source_authority(
                 ],
             )
 
+        if _looks_like_documentation_surface(
+            hostname,
+            url_text,
+            title,
+        ):
+            return SourceAuthority(
+                authority_type=(
+                    "OFFICIAL_DOCUMENTATION"
+                ),
+                authority_level="HIGH",
+                signals=signals + [
+                    "official_documentation_surface"
+                ],
+            )
+
         return SourceAuthority(
-            authority_type=(
-                "OFFICIAL_DOCUMENTATION"
-            ),
-            authority_level="HIGH",
+            authority_type="VENDOR",
+            authority_level="MEDIUM",
             signals=signals + [
-                (
-                    "vendor_owned_technical_"
-                    "surface"
-                )
+                "vendor_owned_non_documentation_surface"
             ],
         )
 
@@ -298,6 +308,7 @@ def authority_confidence(
         "OFFICIAL_SECURITY": 0.90,
         "OFFICIAL_PRICING": 0.90,
         "OFFICIAL_RELEASE_NOTES": 0.90,
+        "VENDOR": 0.70,
         "SOURCE_REPOSITORY": 0.85,
         "ACADEMIC": 0.85,
         "ISSUE_TRACKER": 0.65,
@@ -412,59 +423,32 @@ def _match_candidate_vendor(
     title: str,
     decision: DecisionCase | None,
 ) -> tuple[str, str] | None:
+    """
+    Match first-party vendor ownership conservatively.
+
+    Candidate identity must appear as a complete DNS label rather than
+    merely as an arbitrary hostname substring. This avoids matches such as
+    candidate "redis" -> "rediscovery.example.com".
+    """
     if decision is None:
         return None
 
-    normalized_host = _normalize_identity(
-        hostname
-    )
-
-    normalized_title = _normalize_identity(
-        title
-    )
+    host_labels = [
+        _normalize_identity(part)
+        for part in hostname.split(".")
+        if part
+    ]
 
     for candidate in decision.candidates:
-        candidate_name = (
-            candidate.name.strip()
-        )
-
-        candidate_identity = (
-            _normalize_identity(
-                candidate_name
-            )
+        candidate_name = candidate.name.strip()
+        candidate_identity = _normalize_identity(
+            candidate_name
         )
 
         if len(candidate_identity) < 2:
             continue
 
-        # Require candidate identity on hostname for vendor ownership.
-        # Title alone is insufficient.
-        if (
-            candidate_identity
-            in normalized_host
-        ):
-            return (
-                candidate.candidate_id,
-                candidate_name,
-            )
-
-        # Handles names like "PostgreSQL" -> postgresql.org while still
-        # requiring the hostname to carry the product identity.
-        compact = re.sub(
-            r"[^a-z0-9]",
-            "",
-            candidate_identity,
-        )
-
-        if (
-            len(compact) >= 4
-            and compact
-            in re.sub(
-                r"[^a-z0-9]",
-                "",
-                normalized_host,
-            )
-        ):
+        if candidate_identity in host_labels:
             return (
                 candidate.candidate_id,
                 candidate_name,
@@ -478,30 +462,91 @@ def _github_repo_matches_candidate(
     repository: str,
     decision: DecisionCase | None,
 ) -> bool:
+    """
+    Recognize a candidate-owned GitHub repository.
+
+    Ownership is based primarily on the GitHub organization/owner rather
+    than a repository name alone. A random user's repository named after a
+    candidate must not become an official source.
+
+    Hyphenated organizations such as ``milvus-io`` are supported by exact
+    identity tokens.
+    """
     if decision is None:
         return False
 
-    repo_identity = (
-        _normalize_identity(
-            f"{owner} {repository}"
-        )
+    owner_identity = _normalize_identity(
+        owner
     )
 
+    owner_tokens = {
+        _normalize_identity(token)
+        for token in re.findall(
+            r"[a-z0-9]+",
+            owner.casefold(),
+        )
+        if token
+    }
+
     for candidate in decision.candidates:
-        candidate_identity = (
-            _normalize_identity(
-                candidate.name
-            )
+        candidate_identity = _normalize_identity(
+            candidate.name
         )
 
+        if len(candidate_identity) < 2:
+            continue
+
         if (
-            len(candidate_identity) >= 2
-            and candidate_identity
-            in repo_identity
+            candidate_identity == owner_identity
+            or candidate_identity in owner_tokens
         ):
             return True
 
     return False
+
+
+def _looks_like_documentation_surface(
+    hostname: str,
+    url_text: str,
+    title: str,
+) -> bool:
+    """
+    Distinguish first-party documentation from other vendor-owned pages.
+
+    Vendor ownership alone is not sufficient to call a page documentation.
+    """
+    if (
+        hostname.startswith("docs.")
+        or ".docs." in hostname
+    ):
+        return True
+
+    try:
+        parsed = urlsplit(url_text)
+        path_parts = {
+            part.casefold()
+            for part in parsed.path.split("/")
+            if part
+        }
+    except Exception:
+        path_parts = set()
+
+    if path_parts & {
+        "docs",
+        "documentation",
+        "reference",
+        "manual",
+    }:
+        return True
+
+    normalized_title = title.casefold()
+
+    return (
+        "documentation" in normalized_title
+        or normalized_title.endswith(
+            " docs"
+        )
+    )
 
 
 def _hostname(
