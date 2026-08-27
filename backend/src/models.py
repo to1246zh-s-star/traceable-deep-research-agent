@@ -489,6 +489,35 @@ class ReevaluationPlan:
 
 
 @dataclass(kw_only=True)
+class ReevaluationReactivationDecision:
+    """Deterministic eligibility decision for reopening adaptive research."""
+
+    decision_id: str
+
+    # ELIGIBLE / BLOCKED / UNKNOWN
+    status: str = field(default="UNKNOWN")
+
+    eligible: bool = field(default=False)
+
+    actionable_gap_ids: list[str] = field(
+        default_factory=list
+    )
+
+    blocking_reasons: list[str] = field(
+        default_factory=list
+    )
+
+    remaining_iterations: Optional[int] = field(
+        default=None
+    )
+
+    remaining_tasks: Optional[int] = field(
+        default=None
+    )
+
+
+
+@dataclass(kw_only=True)
 class DecisionArtifact:
     """Deterministic ADR projection of persisted decision state."""
 
