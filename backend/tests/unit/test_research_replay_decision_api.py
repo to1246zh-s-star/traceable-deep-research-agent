@@ -774,3 +774,177 @@ def test_replay_serialization_does_not_mutate_adaptive_state():
         iteration.stopping_explanation
         == "persisted stopping explanation"
     )
+
+
+def test_replay_exposes_deterministic_decision_artifact():
+    decision = DecisionCase(
+        decision_id="dec_artifact_api",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        recommendation="Choose A.",
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=decision,
+        decision_readiness=DecisionReadiness(
+            decision_id="dec_artifact_api",
+            overall_score=0.9,
+            status="READY",
+            criterion_coverage=0.9,
+            evidence_quality=0.9,
+            applicability=0.9,
+            agreement_score=0.9,
+            decision_margin=0.2,
+            blocking_reasons=[],
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_artifact",
+        state,
+    )
+
+    artifact = payload[
+        "decision_artifact"
+    ]
+
+    assert artifact is not None
+    assert (
+        artifact["decision_id"]
+        == "dec_artifact_api"
+    )
+    assert artifact["status"] == "ACCEPTED"
+    assert artifact["recommendation"] == (
+        "Choose A."
+    )
+    assert (
+        "## Decision"
+        in artifact["markdown"]
+    )
+
+
+def test_replay_artifact_does_not_infer_recommendation_from_ranking():
+    from models import DecisionComparison
+
+    decision = DecisionCase(
+        decision_id="dec_artifact_ranking",
+        question="Choose A or B",
+        candidates=[
+            Candidate(
+                candidate_id="cand_a",
+                name="A",
+            ),
+            Candidate(
+                candidate_id="cand_b",
+                name="B",
+            ),
+        ],
+        recommendation=None,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=decision,
+        decision_comparison=DecisionComparison(
+            decision_id="dec_artifact_ranking",
+            status="complete",
+            ranked_candidate_ids=[
+                "cand_a",
+                "cand_b",
+            ],
+        ),
+        decision_readiness=DecisionReadiness(
+            decision_id="dec_artifact_ranking",
+            overall_score=0.9,
+            status="READY",
+            criterion_coverage=0.9,
+            evidence_quality=0.9,
+            applicability=0.9,
+            agreement_score=0.9,
+            decision_margin=0.2,
+            blocking_reasons=[],
+        ),
+    )
+
+    payload = _build_research_replay(
+        "research_artifact_ranking",
+        state,
+    )
+
+    artifact = payload[
+        "decision_artifact"
+    ]
+
+    assert artifact is not None
+    assert artifact["status"] == (
+        "PROVISIONAL"
+    )
+    assert artifact["recommendation"] is None
+
+    assert (
+        "Current deterministic ranking: A > B"
+        in artifact["markdown"]
+    )
+
+    assert (
+        "No structured recommendation recorded."
+        in artifact["markdown"]
+    )
+
+
+def test_replay_returns_null_artifact_for_non_decision_research():
+    state = SummaryState(
+        research_topic="Explain transformer attention",
+    )
+
+    payload = _build_research_replay(
+        "research_no_artifact",
+        state,
+    )
+
+    assert payload["decision"] is None
+    assert (
+        payload["decision_artifact"]
+        is None
+    )
+
+
+def test_replay_artifact_is_projection_not_persisted_state():
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=DecisionCase(
+            decision_id="dec_projection_only",
+            question="Choose A or B",
+            recommendation=None,
+        ),
+    )
+
+    assert not hasattr(
+        state,
+        "decision_artifact",
+    )
+
+    payload = _build_research_replay(
+        "research_projection_only",
+        state,
+    )
+
+    assert (
+        payload["decision_artifact"]
+        is not None
+    )
+
+    assert not hasattr(
+        state,
+        "decision_artifact",
+    )

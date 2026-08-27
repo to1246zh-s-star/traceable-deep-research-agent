@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from agent import DeepResearchAgent
 from config import Configuration, SearchAPI
+from services.decision_artifact import build_decision_artifact
 from services.execution_trace import ExecutionTraceService
 from services.research_store import SQLiteResearchStore
 from services.llm_preflight import (
@@ -226,6 +227,8 @@ class ResearchReplayResponse(BaseModel):
     llm_runtime_circuit: dict[str, Any] = Field(
         default_factory=dict
     )
+
+    decision_artifact: dict[str, Any] | None = None
 
 
 def _serialize_v3_value(value: Any) -> Any:
@@ -509,6 +512,9 @@ def _build_research_replay(
         "timeline": timeline,
         "decision": _serialize_decision_intelligence(
             state
+        ),
+        "decision_artifact": _serialize_v3_value(
+            build_decision_artifact(state)
         ),
         "runtime_notices": [
             dict(notice)
