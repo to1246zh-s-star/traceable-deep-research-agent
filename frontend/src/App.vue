@@ -2039,6 +2039,50 @@ async function selectTrace(
 }
 
 
+
+function llmCircuitStatus(): string {
+  return (
+    researchReplay.value
+      ?.llm_runtime_circuit
+      ?.status || "closed"
+  );
+}
+
+function isLlmCircuitOpen(): boolean {
+  return (
+    llmCircuitStatus().toLowerCase()
+    === "open"
+  );
+}
+
+function llmCircuitReason(): string {
+  const errorType =
+    researchReplay.value
+      ?.llm_runtime_circuit
+      ?.error_type;
+
+  if (!errorType) {
+    return "No terminal provider failure detected";
+  }
+
+  return formatRuntimeErrorType(
+    errorType
+  );
+}
+
+function llmCircuitTriggerStage(): string {
+  const stage =
+    researchReplay.value
+      ?.llm_runtime_circuit
+      ?.trigger_stage;
+
+  if (!stage) {
+    return "Not triggered";
+  }
+
+  return formatRuntimeStage(stage);
+}
+
 function formatRuntimeStage(stage: string): string {
   const labels: Record<string, string> = {
     decision_case_extraction: "Decision Detection",
@@ -5697,6 +5741,81 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
 
   .runtime-notice-badge {
     align-self: flex-start;
+  }
+}
+
+
+
+.llm-circuit-banner {
+  margin-bottom: 0.8rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.llm-circuit-open {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.07);
+}
+
+.llm-circuit-closed {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.llm-circuit-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.llm-circuit-main > div {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.llm-circuit-label {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+.llm-circuit-main strong {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.llm-circuit-state {
+  font-size: 0.76rem;
+  opacity: 0.72;
+}
+
+.llm-circuit-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1.25rem;
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  opacity: 0.82;
+}
+
+.llm-circuit-description {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  opacity: 0.74;
+}
+
+@media (max-width: 720px) {
+  .llm-circuit-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .llm-circuit-details {
+    flex-direction: column;
+    gap: 0.35rem;
   }
 }
 

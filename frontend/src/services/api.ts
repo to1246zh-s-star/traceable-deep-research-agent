@@ -479,6 +479,12 @@ export interface RuntimeNoticeResponse {
   metadata?: Record<string, unknown>;
 }
 
+export interface LlmRuntimeCircuitResponse {
+  status: string;
+  error_type: string | null;
+  trigger_stage: string | null;
+}
+
 export interface ResearchReplayResponse {
   research_id: string;
   research_topic: string;
@@ -489,6 +495,7 @@ export interface ResearchReplayResponse {
   tasks: ResearchReplayTaskResponse[];
   timeline: ResearchReplayEventResponse[];
   runtime_notices?: RuntimeNoticeResponse[];
+  llm_runtime_circuit?: LlmRuntimeCircuitResponse;
   decision: DecisionIntelligenceResponse | null;
 }
 
