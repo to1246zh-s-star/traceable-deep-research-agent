@@ -2105,6 +2105,7 @@ function formatRuntimeErrorType(errorType: string): string {
     authentication: "Provider authentication failure",
     provider_unavailable: "Provider unavailable",
     provider_error: "Provider error",
+    llm_circuit_open: "Skipped by runtime circuit",
     unknown_error: "Runtime provider error",
   };
 
@@ -2116,6 +2117,14 @@ function runtimeNoticeExplanation(
   errorType: string,
   metadata?: Record<string, unknown>
 ): string {
+  if (errorType === "llm_circuit_open") {
+    return (
+      "This optional LLM stage was skipped because an earlier " +
+      "terminal provider condition opened the per-run runtime circuit. " +
+      "Available evidence and deterministic fallback behavior were preserved."
+    );
+  }
+
   if (
     stage === "report_generation" &&
     metadata?.fallback === "deterministic"
@@ -2151,6 +2160,41 @@ function runtimeNoticeExplanation(
   }
 
   return "An optional runtime component degraded. Available research state was preserved.";
+}
+
+
+function runtimeNoticeTrigger(
+  metadata?: Record<string, unknown>
+): string | null {
+  const stage =
+    typeof metadata?.trigger_stage === "string"
+      ? metadata.trigger_stage
+      : null;
+
+  const errorType =
+    typeof metadata?.trigger_error_type === "string"
+      ? metadata.trigger_error_type
+      : null;
+
+  if (!stage && !errorType) {
+    return null;
+  }
+
+  const parts: string[] = [];
+
+  if (stage) {
+    parts.push(
+      formatRuntimeStage(stage)
+    );
+  }
+
+  if (errorType) {
+    parts.push(
+      formatRuntimeErrorType(errorType)
+    );
+  }
+
+  return parts.join(" · ");
 }
 
 function runtimeNoticeClass(errorType: string): string {
@@ -5817,6 +5861,18 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
     flex-direction: column;
     gap: 0.35rem;
   }
+}
+
+
+
+.runtime-notice-trigger {
+  margin-top: 0.4rem !important;
+  font-size: 0.76rem !important;
+  opacity: 0.68 !important;
+}
+
+.runtime-notice-trigger strong {
+  font-weight: 600;
 }
 
 </style>
