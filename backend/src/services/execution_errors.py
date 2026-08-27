@@ -21,6 +21,8 @@ def classify_execution_error(error: Exception) -> str:
     ):
         return "timeout"
 
+    # Check quota/balance BEFORE generic 429 classification.
+    # Some providers return HTTP 429 for exhausted account balance.
     if any(
         marker in combined
         for marker in (
@@ -29,6 +31,11 @@ def classify_execution_error(error: Exception) -> str:
             "exceeded today",
             "insufficient quota",
             "daily quota",
+            "insufficient balance",
+            "insufficient_balance",
+            "insufficient credit",
+            "insufficient credits",
+            "account balance",
         )
     ):
         return "quota_exceeded"
@@ -38,6 +45,7 @@ def classify_execution_error(error: Exception) -> str:
         for marker in (
             "rate limit",
             "rate_limit",
+            "rate-limit",
             "too many requests",
             "429",
         )
@@ -58,6 +66,19 @@ def classify_execution_error(error: Exception) -> str:
         )
     ):
         return "authentication"
+
+    if any(
+        marker in combined
+        for marker in (
+            "service unavailable",
+            "provider unavailable",
+            "connection refused",
+            "connection reset",
+            "connection error",
+            "503",
+        )
+    ):
+        return "provider_unavailable"
 
     if isinstance(error, RuntimeError):
         return "provider_error"

@@ -152,21 +152,46 @@ def test_summary_failure_generates_failed_event(monkeypatch):
         query="summary",
     )
 
-    with pytest.raises(RuntimeError):
-        list(
-            agent._execute_task(
-                state,
-                task,
-                emit_stream=False,
-            )
+    list(
+        agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
         )
+    )
+
+    assert task.status == "partial"
+
+    partial_events = [
+        event
+        for event in state.execution_events
+        if event.event_type == "task_partial"
+    ]
+
+    assert len(partial_events) == 1
+
+    event = partial_events[0]
+
+    assert event.stage == "summarization"
+    assert (
+        event.metadata["error_type"]
+        == "provider_error"
+    )
+    assert event.metadata["evidence_preserved"] == 1
+
+    assert len(state.execution_traces) == 1
+
+    trace = state.execution_traces[0]
+
+    assert trace.status == "partial"
+    assert trace.error_type == "provider_error"
 
     event_types = [
         e.event_type
         for e in state.execution_events
     ]
 
-    assert "task_failed" in event_types
+    assert "task_partial" in event_types
 
 
 def test_degraded_empty_search_is_skipped_not_failed(

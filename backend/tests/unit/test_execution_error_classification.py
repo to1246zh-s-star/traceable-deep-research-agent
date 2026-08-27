@@ -57,3 +57,38 @@ def test_unknown_exception_is_classified_as_unknown_error() -> None:
     )
 
     assert classify_execution_error(error) == "unknown_error"
+
+
+def test_classifies_insufficient_balance_as_quota_exceeded():
+    error = RuntimeError(
+        "Error code: 429 - "
+        "{'error': {'message': 'insufficient balance'}}"
+    )
+
+    assert (
+        classify_execution_error(error)
+        == "quota_exceeded"
+    )
+
+
+def test_classifies_model_rate_limit_as_rate_limited():
+    error = RuntimeError(
+        "Error code: 429 - We have to rate limit "
+        "you for model Qwen"
+    )
+
+    assert (
+        classify_execution_error(error)
+        == "rate_limited"
+    )
+
+
+def test_classifies_service_unavailable():
+    error = RuntimeError(
+        "503 service unavailable"
+    )
+
+    assert (
+        classify_execution_error(error)
+        == "provider_unavailable"
+    )

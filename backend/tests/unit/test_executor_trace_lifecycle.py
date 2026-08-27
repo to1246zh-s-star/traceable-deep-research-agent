@@ -265,25 +265,22 @@ def test_summarization_exception_records_failed_execution_trace(monkeypatch) -> 
     )
     state.todo_items = [task]
 
-    try:
-        list(
-            research_agent._execute_task(
-                state,
-                task,
-                emit_stream=False,
-            )
+    list(
+        research_agent._execute_task(
+            state,
+            task,
+            emit_stream=False,
         )
-    except RuntimeError:
-        pass
-    else:
-        raise AssertionError("Expected RuntimeError to be raised")
+    )
 
-    assert task.status == "failed"
+    assert task.status == "partial"
+
+    assert task.status == "partial"
     assert len(state.execution_traces) == 1
 
     trace = state.execution_traces[0]
     assert trace.task_id == task.id
-    assert trace.status == "failed"
+    assert trace.status == "partial"
     assert trace.current_stage == "summarization"
     assert trace.started_at is not None
     assert trace.finished_at is not None

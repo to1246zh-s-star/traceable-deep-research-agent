@@ -1551,26 +1551,83 @@ class DeepResearchAgent:
             else:
                 task.summary = "暂无可用信息：模型未返回有效的任务总结。"
         except Exception as exc:
-            task.status = "failed"
+            # Retrieval already succeeded and evidence/source context has
+            # already been persisted. A summarization-provider failure must
+            # therefore be represented as PARTIAL rather than as a failed
+            # research task.
+            error_type = classify_execution_error(
+                exc
+            )
+
+            task.status = "partial"
+
+            notice = (
+                "summarization_failed:"
+                f"{error_type}"
+            )
+
+            if notice not in task.notices:
+                task.notices.append(notice)
+
+            task.summary = (
+                "暂无可用信息：检索已完成并保留了来源与证据，"
+                "但任务总结模型暂时不可用。"
+            )
 
             self._emit_execution_event(
                 state,
                 trace_id=trace.trace_id,
                 task_id=task.id,
-                event_type="task_failed",
+                event_type="task_partial",
                 stage="summarization",
                 metadata={
-                    "error_type": classify_execution_error(exc),
+                    "error_type": error_type,
+                    "evidence_preserved": len(
+                        evidence_items
+                    ),
+                    "sources_preserved": bool(
+                        sources_summary
+                    ),
                 },
             )
 
             self._finish_execution_trace(
                 trace,
-                status="failed",
+                status="partial",
                 started_counter=started_counter,
                 error=exc,
             )
-            raise
+
+            if emit_stream:
+                for event in self._drain_execution_events(
+                    state
+                ):
+                    yield event
+
+                for event in self._drain_tool_events(
+                    state,
+                    step=step,
+                ):
+                    yield event
+
+                yield {
+                    "type": "task_status",
+                    "task_id": task.id,
+                    "status": "partial",
+                    "title": task.title,
+                    "intent": task.intent,
+                    "note_id": task.note_id,
+                    "note_path": task.note_path,
+                    "step": step,
+                    "error_type": error_type,
+                }
+            else:
+                self._drain_tool_events(state)
+
+            # Do not create a Claim from the fallback status text. Existing
+            # Evidence remains available to downstream deterministic
+            # decision intelligence.
+            return
 
 
         evidence_ids = [

@@ -184,6 +184,9 @@ class ResearchReplayTaskResponse(BaseModel):
     query: str
     status: str
 
+    notices: list[str] = Field(default_factory=list)
+    error_types: list[str] = Field(default_factory=list)
+
     trace_ids: list[str] = Field(default_factory=list)
     claim_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
@@ -375,6 +378,16 @@ def _build_research_replay(
                 "intent": task.intent,
                 "query": task.query,
                 "status": task.status,
+                "notices": list(
+                    task.notices
+                ),
+                "error_types": sorted(
+                    {
+                        trace.error_type
+                        for trace in task_traces
+                        if trace.error_type
+                    }
+                ),
                 "trace_ids": [
                     trace.trace_id
                     for trace in task_traces
