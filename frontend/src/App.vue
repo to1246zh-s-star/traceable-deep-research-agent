@@ -275,6 +275,69 @@
               </div>
             </section>
 
+            <section
+              v-if="
+                researchReplay.lineage?.parent_research_id
+              "
+              class="replay-version-diff"
+            >
+              <div class="replay-version-diff-heading">
+                <div>
+                  <p class="trace-eyebrow">
+                    Version Changes
+                  </p>
+                  <h4>
+                    Changes from previous version
+                  </h4>
+                </div>
+
+                <span
+                  v-if="researchVersionDiffLoading"
+                  class="replay-version-diff-state"
+                >
+                  Loading…
+                </span>
+              </div>
+
+              <template
+                v-if="
+                  !researchVersionDiffLoading &&
+                  researchVersionDiff
+                "
+              >
+                <p class="replay-version-diff-note">
+                  Structural differences only. This does
+                  not imply that either version is better.
+                </p>
+
+                <ul
+                  v-if="
+                    researchVersionDiff.summary_lines.length
+                  "
+                  class="replay-version-diff-summary"
+                >
+                  <li
+                    v-for="
+                      line in
+                        researchVersionDiff.summary_lines
+                    "
+                    :key="line"
+                  >
+                    {{ line }}
+                  </li>
+                </ul>
+              </template>
+
+              <p
+                v-else-if="
+                  !researchVersionDiffLoading
+                "
+                class="replay-version-diff-note"
+              >
+                Version comparison is unavailable.
+              </p>
+            </section>
+
             <div class="replay-summary-grid">
               <div class="replay-metric">
                 <span>Tasks</span>
@@ -1699,6 +1762,7 @@
 import {
   getResearchClaim,
   getResearchReplay,
+  getResearchVersionDiff,
   getResearchTrace,
   listResearchClaims,
   listResearchTraces,
@@ -1706,6 +1770,7 @@ import {
   type ClaimResponse,
   type ExecutionTraceResponse,
   type ResearchReplayResponse,
+  type ResearchVersionDiffResponse,
   type ResearchReplayTaskResponse,
   type TraceDetailResponse
 } from "./services/api";
@@ -2022,6 +2087,10 @@ async function copyNotePath(path: string | null | undefined) {
 
 const researchId = ref<string | null>(null);
 const researchReplay = ref<ResearchReplayResponse | null>(null);
+const researchVersionDiff = ref<ResearchVersionDiffResponse | null>(
+  null
+);
+const researchVersionDiffLoading = ref(false);
 
 
 function formatResearchStatusLabel(
@@ -2402,6 +2471,32 @@ async function copyDecisionArtifactMarkdown() {
 }
 
 
+async function loadCurrentVersionDiff(
+  replay: ResearchReplayResponse
+) {
+  const parentResearchId =
+    replay.lineage?.parent_research_id;
+
+  if (!parentResearchId) {
+    researchVersionDiff.value = null;
+    return;
+  }
+
+  researchVersionDiffLoading.value = true;
+
+  try {
+    researchVersionDiff.value =
+      await getResearchVersionDiff(
+        replay.research_id,
+        parentResearchId
+      );
+  } catch {
+    researchVersionDiff.value = null;
+  } finally {
+    researchVersionDiffLoading.value = false;
+  }
+}
+
 async function selectReplayVersion(
   selectedResearchId: string
 ) {
@@ -2428,8 +2523,14 @@ async function loadResearchReplay(
   replayError.value = "";
 
   try {
-    researchReplay.value = await getResearchReplay(
+    const replay = await getResearchReplay(
       targetResearchId
+    );
+
+    researchReplay.value = replay;
+
+    await loadCurrentVersionDiff(
+      replay
     );
   } catch (err) {
     researchReplay.value = null;
@@ -6290,6 +6391,50 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
   .replay-version-switcher {
     justify-content: flex-start;
   }
+}
+
+
+.replay-version-diff {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.045);
+}
+
+.replay-version-diff-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.replay-version-diff-heading h4 {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
+.replay-version-diff-state {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.replay-version-diff-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.replay-version-diff-summary {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.replay-version-diff-summary li {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 </style>

@@ -510,6 +510,43 @@ export interface DecisionArtifactResponse {
   markdown: string;
 }
 
+export interface VersionFieldChangeResponse {
+  field_name: string;
+  change_type: "ADDED" | "REMOVED" | "CHANGED";
+  before: unknown;
+  after: unknown;
+}
+
+export interface ResearchVersionDiffResponse {
+  source_research_id: string;
+  target_research_id: string;
+  same_lineage: boolean;
+  has_changes: boolean;
+  decision_changes: VersionFieldChangeResponse[];
+  readiness_changes: VersionFieldChangeResponse[];
+  recommendation_changes: VersionFieldChangeResponse[];
+  research_gap_changes: VersionFieldChangeResponse[];
+  evidence_changes: VersionFieldChangeResponse[];
+  assumption_changes: VersionFieldChangeResponse[];
+  trigger_changes: VersionFieldChangeResponse[];
+  architecture_changes: VersionFieldChangeResponse[];
+  unchanged_sections: string[];
+  summary_lines: string[];
+}
+
+export function getResearchVersionDiff(
+  targetResearchId: string,
+  sourceResearchId: string
+): Promise<ResearchVersionDiffResponse> {
+  return requestJson<ResearchVersionDiffResponse>(
+    `/research/${encodeURIComponent(
+      targetResearchId
+    )}/diff/${encodeURIComponent(
+      sourceResearchId
+    )}`
+  );
+}
+
 export interface ResearchLineageResponse {
   research_id: string;
   root_research_id: string;
