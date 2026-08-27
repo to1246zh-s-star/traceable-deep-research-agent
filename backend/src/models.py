@@ -377,6 +377,77 @@ class RecommendationRobustness:
 
 
 @dataclass(kw_only=True)
+class ReevaluationRequest:
+    """Structured external observations that may invalidate decision state."""
+
+    decision_id: str
+
+    # Exact existing trigger IDs explicitly observed by a caller.
+    observed_trigger_ids: list[str] = field(
+        default_factory=list
+    )
+
+    # Structured source changes, keyed by the same source_type used by
+    # DecisionReevaluationTrigger.
+    #
+    # Example:
+    # {
+    #     "technical_context": [
+    #         "deployment_environment",
+    #     ]
+    # }
+    changed_source_fields: dict[
+        str,
+        list[str],
+    ] = field(default_factory=dict)
+
+    # Human-readable observations are retained for traceability only.
+    # They are never semantically interpreted by this deterministic service.
+    observed_facts: list[str] = field(
+        default_factory=list
+    )
+
+
+@dataclass(kw_only=True)
+class ReevaluationAssessment:
+    """Deterministic assessment of whether existing decision state is stale."""
+
+    decision_id: str
+
+    # REQUIRED / RECOMMENDED / NOT_REQUIRED / UNKNOWN
+    status: str = field(default="UNKNOWN")
+
+    matched_trigger_ids: list[str] = field(
+        default_factory=list
+    )
+
+    invalidated_modules: list[str] = field(
+        default_factory=list
+    )
+
+    affected_candidate_ids: list[str] = field(
+        default_factory=list
+    )
+
+    affected_criterion_ids: list[str] = field(
+        default_factory=list
+    )
+
+    affected_scenario_ids: list[str] = field(
+        default_factory=list
+    )
+
+    reasons: list[str] = field(
+        default_factory=list
+    )
+
+    observed_facts: list[str] = field(
+        default_factory=list
+    )
+
+
+
+@dataclass(kw_only=True)
 class DecisionArtifact:
     """Deterministic ADR projection of persisted decision state."""
 
