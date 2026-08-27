@@ -194,6 +194,87 @@
           </p>
 
           <template v-if="researchReplay">
+            <section
+              v-if="researchReplay.lineage"
+              class="replay-version-panel"
+              aria-label="Research version history"
+            >
+              <div class="replay-version-summary">
+                <div>
+                  <p class="trace-eyebrow">
+                    Research Version
+                  </p>
+                  <strong>
+                    Version
+                    {{
+                      researchReplay.lineage.version_number
+                    }}
+                    of
+                    {{
+                      researchReplay.versions.length || 1
+                    }}
+                  </strong>
+                </div>
+
+                <p
+                  v-if="
+                    researchReplay.lineage
+                      .parent_research_id
+                  "
+                  class="replay-version-parent"
+                >
+                  Re-evaluated from version
+                  {{
+                    Math.max(
+                      1,
+                      researchReplay.lineage
+                        .version_number - 1
+                    )
+                  }}
+                </p>
+
+                <p
+                  v-else
+                  class="replay-version-parent"
+                >
+                  Initial research version
+                </p>
+              </div>
+
+              <div
+                v-if="
+                  researchReplay.versions.length > 1
+                "
+                class="replay-version-switcher"
+              >
+                <button
+                  v-for="
+                    version in
+                      researchReplay.versions
+                  "
+                  :key="version.research_id"
+                  type="button"
+                  class="replay-version-button"
+                  :class="{
+                    active:
+                      version.research_id ===
+                      researchReplay.research_id
+                  }"
+                  :disabled="
+                    version.research_id ===
+                    researchReplay.research_id
+                  "
+                  @click="
+                    selectReplayVersion(
+                      version.research_id
+                    )
+                  "
+                >
+                  v{{ version.version_number }}
+                </button>
+              </div>
+            </section>
+
             <div class="replay-summary-grid">
               <div class="replay-metric">
                 <span>Tasks</span>
@@ -2320,6 +2401,25 @@ async function copyDecisionArtifactMarkdown() {
   }
 }
 
+
+async function selectReplayVersion(
+  selectedResearchId: string
+) {
+  if (
+    !selectedResearchId ||
+    selectedResearchId === researchReplay.value?.research_id
+  ) {
+    return;
+  }
+
+  researchId.value = selectedResearchId;
+
+  await Promise.all([
+    loadResearchReplay(selectedResearchId),
+    loadResearchTraces(selectedResearchId),
+    loadResearchClaims(selectedResearchId)
+  ]);
+}
 
 async function loadResearchReplay(
   targetResearchId: string
@@ -6117,6 +6217,79 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
 
 .runtime-notice-trigger strong {
   font-weight: 600;
+}
+
+
+.replay-version-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.replay-version-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.replay-version-summary strong {
+  font-size: 13px;
+}
+
+.replay-version-parent {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.66;
+}
+
+.replay-version-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.replay-version-button {
+  min-width: 38px;
+  padding: 6px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.replay-version-button:hover:not(:disabled) {
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.replay-version-button.active {
+  border-color: rgba(99, 102, 241, 0.42);
+  background: rgba(99, 102, 241, 0.10);
+  font-weight: 700;
+}
+
+.replay-version-button:disabled {
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .replay-version-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .replay-version-switcher {
+    justify-content: flex-start;
+  }
 }
 
 </style>

@@ -510,6 +510,15 @@ export interface DecisionArtifactResponse {
   markdown: string;
 }
 
+export interface ResearchLineageResponse {
+  research_id: string;
+  root_research_id: string;
+  parent_research_id: string | null;
+  version_number: number;
+  creation_reason: string;
+  created_from_trigger_ids: string[];
+}
+
 export interface ResearchReplayResponse {
   research_id: string;
   research_topic: string;
@@ -521,6 +530,8 @@ export interface ResearchReplayResponse {
   timeline: ResearchReplayEventResponse[];
   runtime_notices?: RuntimeNoticeResponse[];
   llm_runtime_circuit?: LlmRuntimeCircuitResponse;
+  lineage: ResearchLineageResponse | null;
+  versions: ResearchLineageResponse[];
   decision: DecisionIntelligenceResponse | null;
   decision_artifact?: DecisionArtifactResponse | null;
 }
