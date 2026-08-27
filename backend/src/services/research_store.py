@@ -282,6 +282,13 @@ class ResearchStore(Protocol):
         """Return run-lineage metadata, if present."""
         ...
 
+    def list_lineage(
+        self,
+        root_research_id: str,
+    ) -> list[ResearchLineage]:
+        """Return one research version chain."""
+        ...
+
     def get(self, research_id: str) -> SummaryState | None:
         """Return a stored research state, if present."""
         ...
@@ -811,6 +818,51 @@ class SQLiteResearchStore:
         )
 
 
+    def list_lineage(
+        self,
+        root_research_id: str,
+    ) -> list[ResearchLineage]:
+        """Return the ordered version chain for one root run."""
+
+        with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT
+                        research_id
+                    FROM research_runs
+                    WHERE
+                        root_research_id = ?
+                        OR (
+                            root_research_id IS NULL
+                            AND research_id = ?
+                        )
+                    ORDER BY
+                        COALESCE(
+                            version_number,
+                            1
+                        ),
+                        rowid
+                    """,
+                    (
+                        root_research_id,
+                        root_research_id,
+                    ),
+                ).fetchall()
+
+        result: list[ResearchLineage] = []
+
+        for row in rows:
+            lineage = self.get_lineage(
+                row["research_id"]
+            )
+
+            if lineage is not None:
+                result.append(lineage)
+
+        return result
+
+
     def get(self, research_id: str) -> SummaryState | None:
         """Load and reconstruct one research state."""
 
@@ -1139,6 +1191,30 @@ class InMemoryResearchStore:
             return self._lineage.get(
                 research_id
             )
+
+    def list_lineage(
+        self,
+        root_research_id: str,
+    ) -> list[ResearchLineage]:
+        """Return one ordered in-memory version chain."""
+
+        with self._lock:
+            values = [
+                lineage
+                for lineage in self._lineage.values()
+                if (
+                    lineage.root_research_id
+                    == root_research_id
+                )
+            ]
+
+        return sorted(
+            values,
+            key=lambda item: (
+                item.version_number,
+                item.research_id,
+            ),
+        )
 
     def get(
         self,

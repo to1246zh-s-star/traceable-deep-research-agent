@@ -365,3 +365,137 @@ def test_lineage_is_not_summary_state_business_data(
         state,
         "version_number",
     )
+
+
+def test_sqlite_list_lineage_returns_ordered_chain(
+    tmp_path,
+):
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    v1 = store.save(
+        SummaryState(
+            research_topic="v1",
+        )
+    )
+
+    v2 = store.save(
+        SummaryState(
+            research_topic="v2",
+        ),
+        parent_research_id=v1,
+        creation_reason="reevaluation",
+    )
+
+    v3 = store.save(
+        SummaryState(
+            research_topic="v3",
+        ),
+        parent_research_id=v2,
+        creation_reason="reevaluation",
+    )
+
+    versions = store.list_lineage(v1)
+
+    assert [
+        item.research_id
+        for item in versions
+    ] == [
+        v1,
+        v2,
+        v3,
+    ]
+
+    assert [
+        item.version_number
+        for item in versions
+    ] == [
+        1,
+        2,
+        3,
+    ]
+
+
+def test_sqlite_list_lineage_does_not_mix_roots(
+    tmp_path,
+):
+    store = SQLiteResearchStore(
+        tmp_path / "research.db"
+    )
+
+    root_a = store.save(
+        SummaryState(
+            research_topic="A1",
+        )
+    )
+
+    child_a = store.save(
+        SummaryState(
+            research_topic="A2",
+        ),
+        parent_research_id=root_a,
+        creation_reason="reevaluation",
+    )
+
+    root_b = store.save(
+        SummaryState(
+            research_topic="B1",
+        )
+    )
+
+    versions = store.list_lineage(
+        root_a
+    )
+
+    assert [
+        item.research_id
+        for item in versions
+    ] == [
+        root_a,
+        child_a,
+    ]
+
+    assert root_b not in {
+        item.research_id
+        for item in versions
+    }
+
+
+def test_inmemory_list_lineage_returns_chain_only():
+    store = InMemoryResearchStore()
+
+    v1 = store.save(
+        SummaryState(
+            research_topic="v1",
+        )
+    )
+
+    v2 = store.save(
+        SummaryState(
+            research_topic="v2",
+        ),
+        parent_research_id=v1,
+        creation_reason="reevaluation",
+    )
+
+    unrelated = store.save(
+        SummaryState(
+            research_topic="other",
+        )
+    )
+
+    versions = store.list_lineage(v1)
+
+    assert [
+        item.research_id
+        for item in versions
+    ] == [
+        v1,
+        v2,
+    ]
+
+    assert unrelated not in {
+        item.research_id
+        for item in versions
+    }
