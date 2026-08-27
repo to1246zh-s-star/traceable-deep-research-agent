@@ -13,6 +13,10 @@ from models import (
 from services.adaptive_research_explanation import (
     build_adaptive_research_explanation,
 )
+from services.adaptive_stopping_arbitration import (
+    arbitrate_adaptive_stopping,
+    finalize_adaptive_research_state,
+)
 from services.adaptive_research_value import (
     apply_adaptive_research_value_stop,
     assess_iteration_research_value,
@@ -241,9 +245,23 @@ def run_adaptive_decision_loop(
             )
         )
 
+        state.stopping_decision = (
+            arbitrate_adaptive_stopping(
+                state.stopping_decision,
+                adaptive_state,
+                budget,
+                usage,
+            )
+        )
+
         build_adaptive_research_explanation(
             iteration,
             state.stopping_decision,
         )
+
+    finalize_adaptive_research_state(
+        adaptive_state,
+        state.stopping_decision,
+    )
 
     return state

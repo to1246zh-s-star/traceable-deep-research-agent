@@ -970,3 +970,331 @@ def test_adaptive_loop_attaches_replay_explanation():
     )
 
     assert item.stopping_explanation
+
+
+def test_adaptive_loop_does_not_stop_useful_research_on_weak_readiness_gain():
+    from models import (
+        AdaptiveResearchIteration,
+        EvidenceSignal,
+        ResearchBudget,
+        ResearchStoppingDecision,
+        ResearchUsage,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+        research_budget=ResearchBudget(
+            max_iterations=3,
+            max_tasks=9,
+        ),
+        research_usage=ResearchUsage(),
+    )
+
+    calls = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 3:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=calls,
+            task_ids=[calls],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = calls
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.evidence_signals.append(
+            EvidenceSignal(
+                evidence_id=f"evi_{calls}",
+                candidate_id="cand_a",
+                criterion_id=f"crit_new_{calls}",
+                direction="POSITIVE",
+                strength=0.8,
+                source_confidence=0.8,
+                applicability=0.8,
+            )
+        )
+
+        if calls < 3:
+            state_arg.stopping_decision = (
+                ResearchStoppingDecision(
+                    should_continue=False,
+                    reason=(
+                        "insufficient_marginal_improvement"
+                    ),
+                    readiness_score=0.60,
+                    readiness_status="CONFLICTED",
+                    readiness_improvement=0.01,
+                    actionable_gap_count=5,
+                    blocking_budget_limits=[],
+                )
+            )
+        else:
+            state_arg.stopping_decision = (
+                ResearchStoppingDecision(
+                    should_continue=False,
+                    reason="budget_exhausted",
+                    readiness_score=0.61,
+                    readiness_status="CONFLICTED",
+                    readiness_improvement=0.01,
+                    actionable_gap_count=4,
+                    blocking_budget_limits=[
+                        "max_iterations"
+                    ],
+                )
+            )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=execute_followups,
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    assert calls == 3
+
+    assert (
+        state.stopping_decision.reason
+        == "budget_exhausted"
+    )
+
+    assert (
+        state.adaptive_research_state
+        is not None
+    )
+
+    assert (
+        state.adaptive_research_state.status
+        != "active"
+    )
+
+
+def test_adaptive_loop_does_not_stop_useful_research_on_weak_readiness_gain():
+    from models import (
+        AdaptiveResearchIteration,
+        EvidenceSignal,
+        ResearchBudget,
+        ResearchStoppingDecision,
+    )
+
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    state.research_budget = ResearchBudget(
+        max_iterations=3,
+        max_tasks=9,
+    )
+
+    calls = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 3:
+            return None
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=calls,
+            task_ids=[calls],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = calls
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        state_arg.evidence_signals.append(
+            EvidenceSignal(
+                evidence_id=f"evi_{calls}",
+                candidate_id="cand_a",
+                criterion_id=f"crit_new_{calls}",
+                direction="POSITIVE",
+                strength=0.8,
+                source_confidence=0.8,
+                applicability=0.8,
+            )
+        )
+
+        if calls < 3:
+            state_arg.stopping_decision = (
+                ResearchStoppingDecision(
+                    should_continue=False,
+                    reason=(
+                        "insufficient_marginal_improvement"
+                    ),
+                    readiness_score=0.60,
+                    readiness_status="CONFLICTED",
+                    readiness_improvement=0.01,
+                    actionable_gap_count=5,
+                    blocking_budget_limits=[],
+                )
+            )
+        else:
+            state_arg.stopping_decision = (
+                ResearchStoppingDecision(
+                    should_continue=False,
+                    reason="budget_exhausted",
+                    readiness_score=0.61,
+                    readiness_status="CONFLICTED",
+                    readiness_improvement=0.01,
+                    actionable_gap_count=4,
+                    blocking_budget_limits=[
+                        "max_iterations"
+                    ],
+                )
+            )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=execute_followups,
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    assert calls == 3
+
+    assert (
+        state.stopping_decision.reason
+        == "budget_exhausted"
+    )
+
+    assert (
+        state.adaptive_research_state
+        is not None
+    )
+
+    assert (
+        state.adaptive_research_state.status
+        != "active"
+    )
+
+
+def test_adaptive_loop_final_stop_cannot_leave_state_active():
+    state = SummaryState(
+        research_topic="A vs B",
+        decision_case=make_decision(),
+        research_analysis=make_analysis(),
+        stopping_decision=continue_decision(),
+    )
+
+    calls = 0
+
+    def execute_followups(
+        state_arg,
+        analysis,
+        adaptive_state,
+        *,
+        max_tasks,
+    ):
+        nonlocal calls
+        calls += 1
+
+        if calls > 1:
+            return None
+
+        from models import AdaptiveResearchIteration
+
+        iteration = AdaptiveResearchIteration(
+            decision_id="dec_loop",
+            iteration_number=1,
+            task_ids=[1],
+            status="completed",
+        )
+
+        adaptive_state.iteration_count = 1
+        adaptive_state.iterations.append(
+            iteration
+        )
+
+        return iteration
+
+    def execute_intelligence(
+        state_arg,
+        *,
+        research_budget,
+        research_usage,
+    ):
+        from models import ResearchStoppingDecision
+
+        state_arg.stopping_decision = (
+            ResearchStoppingDecision(
+                should_continue=False,
+                reason="decision_ready",
+                readiness_score=1.0,
+                readiness_status="READY",
+                actionable_gap_count=0,
+                blocking_budget_limits=[],
+            )
+        )
+
+        return state_arg
+
+    run_adaptive_decision_loop(
+        state,
+        execute_followups=execute_followups,
+        execute_decision_intelligence=(
+            execute_intelligence
+        ),
+    )
+
+    assert (
+        state.stopping_decision.should_continue
+        is False
+    )
+
+    assert (
+        state.adaptive_research_state.status
+        == "stopped"
+    )
