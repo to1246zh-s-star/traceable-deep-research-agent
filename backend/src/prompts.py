@@ -113,6 +113,15 @@ report_writer_instructions = """
 5. **参考来源**：按任务列出关键来源条目（标题 + 链接）。
 </REPORT_TEMPLATE>
 
+<DECISION_INTELLIGENCE_POLICY>
+- 如果输入中包含 "DETERMINISTIC DECISION INTELLIGENCE CONTEXT"，其 readiness 状态和 reporting policy 是推荐确定性的最高优先级约束；
+- 只有当 reporting policy 明确为 DEFINITIVE_RECOMMENDATION_ALLOWED 时，才能输出确定性的最终技术选型；
+- 当 reporting policy 为 PROVISIONAL_ONLY 时，禁止把证据倾向写成已经确定的最终选择；
+- PROVISIONAL_ONLY 时必须明确说明当前结论仍是暂定性的，并呈现关键未解决问题；
+- research budget 已耗尽不代表 decision ready；
+- 不得自行覆盖、重新解释或升级 deterministic readiness 状态。
+</DECISION_INTELLIGENCE_POLICY>
+
 <REQUIREMENTS>
 - 报告使用 Markdown；
 - 各部分明确分节，禁止添加额外的封面或结语；

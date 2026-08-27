@@ -10,6 +10,7 @@ from models import SummaryState
 from config import Configuration
 from utils import strip_thinking_tokens
 from services.text_processing import strip_tool_calls
+from services.decision_reporting import build_decision_reporting_context
 
 
 class ReportingService:
@@ -56,8 +57,21 @@ class ReportingService:
             ensure_ascii=False,
         )
 
+        decision_context = (
+            build_decision_reporting_context(
+                state
+            )
+        )
+
+        decision_section = (
+            f"{decision_context}\n\n"
+            if decision_context
+            else ""
+        )
+
         prompt = (
             f"研究主题：{state.research_topic}\n"
+            f"{decision_section}"
             f"任务概览：\n{''.join(tasks_block)}\n"
             f"可用任务笔记：\n{notes_section}\n"
             f"请针对每条任务笔记使用格式：[TOOL_CALL:note:{read_template}] 读取内容，整合所有信息后撰写报告。\n"
