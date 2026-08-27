@@ -448,6 +448,47 @@ class ReevaluationAssessment:
 
 
 @dataclass(kw_only=True)
+class ReevaluationPlan:
+    """Deterministic plan describing what stale decision state must be revisited."""
+
+    decision_id: str
+
+    # REQUIRED / RECOMMENDED / NOT_REQUIRED / UNKNOWN
+    status: str = field(default="UNKNOWN")
+
+    matched_trigger_ids: list[str] = field(
+        default_factory=list
+    )
+
+    modules_to_recompute: list[str] = field(
+        default_factory=list
+    )
+
+    candidate_ids_to_recheck: list[str] = field(
+        default_factory=list
+    )
+
+    criterion_ids_to_recheck: list[str] = field(
+        default_factory=list
+    )
+
+    scenario_ids_to_recheck: list[str] = field(
+        default_factory=list
+    )
+
+    # Deterministic research directions only.
+    # These are NOT ResearchGap objects and are not automatically executed.
+    research_queries: list[str] = field(
+        default_factory=list
+    )
+
+    reasons: list[str] = field(
+        default_factory=list
+    )
+
+
+
+@dataclass(kw_only=True)
 class DecisionArtifact:
     """Deterministic ADR projection of persisted decision state."""
 
