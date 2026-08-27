@@ -681,3 +681,212 @@ def test_new_version_clears_old_report_note_references(
         new_state.report_note_path
         is None
     )
+
+
+def test_eligible_reevaluation_persists_only_matched_trigger_ids(
+    monkeypatch,
+):
+    app = make_app()
+    client = TestClient(app)
+
+    original = build_state()
+
+    source_id = (
+        app.state.research_store.save(
+            original
+        )
+    )
+
+    preparation = (
+        eligible_preparation()
+    )
+
+    preparation.assessment.matched_trigger_ids = [
+        "trg_matched",
+    ]
+
+    monkeypatch.setattr(
+        main,
+        "prepare_reevaluation",
+        lambda *args, **kwargs: preparation,
+    )
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        app.state.llm_preflight_guard,
+        "check",
+        lambda probe: SimpleNamespace(
+            available=True,
+            code="ok",
+            reason="ok",
+        ),
+    )
+
+    class FakeReporting:
+        def generate_report(
+            self,
+            state,
+        ):
+            return "NEW REPORT"
+
+    class FakeAgent:
+        def __init__(
+            self,
+            config=None,
+        ):
+            self.reporting = FakeReporting()
+
+        def execute_prepared_reevaluation(
+            self,
+            state,
+            preparation,
+        ):
+            return state
+
+    monkeypatch.setattr(
+        main,
+        "DeepResearchAgent",
+        FakeAgent,
+    )
+
+    response = client.post(
+        f"/research/{source_id}/reevaluate",
+        json={
+            "observed_trigger_ids": [
+                "trg_matched",
+                "trg_unmatched",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    new_id = payload["research_id"]
+
+    lineage = (
+        app.state.research_store.get_lineage(
+            new_id
+        )
+    )
+
+    assert lineage is not None
+
+    assert (
+        lineage.created_from_trigger_ids
+        == ["trg_matched"]
+    )
+
+    assert (
+        payload["lineage"][
+            "created_from_trigger_ids"
+        ]
+        == ["trg_matched"]
+    )
+
+
+def test_chained_reevaluation_preserves_root_lineage(
+    monkeypatch,
+):
+    app = make_app()
+    client = TestClient(app)
+
+    original = build_state()
+
+    v1 = (
+        app.state.research_store.save(
+            original
+        )
+    )
+
+    preparation = (
+        eligible_preparation()
+    )
+
+    monkeypatch.setattr(
+        main,
+        "prepare_reevaluation",
+        lambda *args, **kwargs: preparation,
+    )
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        app.state.llm_preflight_guard,
+        "check",
+        lambda probe: SimpleNamespace(
+            available=True,
+            code="ok",
+            reason="ok",
+        ),
+    )
+
+    class FakeReporting:
+        def generate_report(
+            self,
+            state,
+        ):
+            return "NEW REPORT"
+
+    class FakeAgent:
+        def __init__(
+            self,
+            config=None,
+        ):
+            self.reporting = FakeReporting()
+
+        def execute_prepared_reevaluation(
+            self,
+            state,
+            preparation,
+        ):
+            return state
+
+    monkeypatch.setattr(
+        main,
+        "DeepResearchAgent",
+        FakeAgent,
+    )
+
+    response_v2 = client.post(
+        f"/research/{v1}/reevaluate",
+        json={},
+    )
+
+    assert response_v2.status_code == 200
+
+    v2 = response_v2.json()["research_id"]
+
+    response_v3 = client.post(
+        f"/research/{v2}/reevaluate",
+        json={},
+    )
+
+    assert response_v3.status_code == 200
+
+    v3 = response_v3.json()["research_id"]
+
+    lineage_v2 = (
+        app.state.research_store.get_lineage(
+            v2
+        )
+    )
+
+    lineage_v3 = (
+        app.state.research_store.get_lineage(
+            v3
+        )
+    )
+
+    assert lineage_v2 is not None
+    assert lineage_v3 is not None
+
+    assert lineage_v2.root_research_id == v1
+    assert lineage_v2.parent_research_id == v1
+    assert lineage_v2.version_number == 2
+
+    assert lineage_v3.root_research_id == v1
+    assert lineage_v3.parent_research_id == v2
+    assert lineage_v3.version_number == 3

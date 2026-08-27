@@ -99,6 +99,7 @@ class ResearchReevaluationResponse(BaseModel):
     assessment: dict[str, Any]
     plan: dict[str, Any]
     reactivation: dict[str, Any]
+    lineage: dict[str, Any] | None = None
 
 
 
@@ -1192,7 +1193,18 @@ def create_app() -> FastAPI:
 
         new_research_id = (
             app.state.research_store.save(
-                working_state
+                working_state,
+                parent_research_id=research_id,
+                creation_reason="reevaluation",
+                created_from_trigger_ids=list(
+                    preparation.assessment.matched_trigger_ids
+                ),
+            )
+        )
+
+        lineage = (
+            app.state.research_store.get_lineage(
+                new_research_id
             )
         )
 
@@ -1200,6 +1212,9 @@ def create_app() -> FastAPI:
             **response_base,
             research_id=new_research_id,
             executed=True,
+            lineage=_serialize_v3_value(
+                lineage
+            ),
         )
 
 
