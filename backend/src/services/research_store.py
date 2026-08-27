@@ -45,6 +45,7 @@ from models import (
     ResearchUsage,
     SourceDiversity,
     SourceQuality,
+    ResearchLineage,
     SummaryState,
     TechnicalContext,
     TodoItem,
@@ -237,11 +238,48 @@ def _deserialize_v3_state(raw: str | None) -> dict:
     }
 
 
+def _normalize_trigger_ids(
+    values: list[str],
+) -> list[str]:
+    """Normalize structured trigger IDs deterministically."""
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        normalized = str(value).strip()
+
+        if not normalized:
+            continue
+
+        if normalized in seen:
+            continue
+
+        seen.add(normalized)
+        result.append(normalized)
+
+    return result
+
+
 class ResearchStore(Protocol):
     """Storage contract for research states."""
 
-    def save(self, state: SummaryState) -> str:
+    def save(
+        self,
+        state: SummaryState,
+        *,
+        parent_research_id: str | None = None,
+        creation_reason: str = "initial_research",
+        created_from_trigger_ids: list[str] | None = None,
+    ) -> str:
         """Store a research state and return its research id."""
+        ...
+
+    def get_lineage(
+        self,
+        research_id: str,
+    ) -> ResearchLineage | None:
+        """Return run-lineage metadata, if present."""
         ...
 
     def get(self, research_id: str) -> SummaryState | None:
@@ -399,13 +437,88 @@ class SQLiteResearchStore:
                 )
                 connection.commit()
 
-    def save(self, state: SummaryState) -> str:
+            lineage_columns = {
+                "root_research_id": "TEXT",
+                "parent_research_id": "TEXT",
+                "version_number": "INTEGER",
+                "creation_reason": "TEXT",
+                "created_from_trigger_ids_json": "TEXT",
+            }
+
+            for column_name, column_type in (
+                lineage_columns.items()
+            ):
+                if column_name in columns:
+                    continue
+
+                connection.execute(
+                    "ALTER TABLE research_runs "
+                    f"ADD COLUMN {column_name} "
+                    f"{column_type}"
+                )
+
+            connection.commit()
+
+    def save(
+        self,
+        state: SummaryState,
+        *,
+        parent_research_id: str | None = None,
+        creation_reason: str = "initial_research",
+        created_from_trigger_ids: list[str] | None = None,
+    ) -> str:
         """Persist one complete research state and return its research id."""
 
         research_id = f"research_{uuid.uuid4().hex[:12]}"
 
+        trigger_ids = _normalize_trigger_ids(
+            created_from_trigger_ids or []
+        )
+
         with self._lock:
             with self._connect() as connection:
+                if parent_research_id is None:
+                    root_research_id = research_id
+                    version_number = 1
+                else:
+                    parent_lineage_row = (
+                        connection.execute(
+                            """
+                            SELECT
+                                root_research_id,
+                                version_number
+                            FROM research_runs
+                            WHERE research_id = ?
+                            """,
+                            (
+                                parent_research_id,
+                            ),
+                        ).fetchone()
+                    )
+
+                    if parent_lineage_row is None:
+                        raise ValueError(
+                            "parent research run not found"
+                        )
+
+                    root_research_id = (
+                        parent_lineage_row[
+                            "root_research_id"
+                        ]
+                        or parent_research_id
+                    )
+
+                    parent_version = (
+                        parent_lineage_row[
+                            "version_number"
+                        ]
+                        or 1
+                    )
+
+                    version_number = (
+                        int(parent_version) + 1
+                    )
+
                 connection.execute(
                     """
                     INSERT INTO research_runs (
@@ -416,9 +529,17 @@ class SQLiteResearchStore:
                         running_summary,
                         structured_report,
                         report_note_id,
-                        report_note_path
+                        report_note_path,
+                        root_research_id,
+                        parent_research_id,
+                        version_number,
+                        creation_reason,
+                        created_from_trigger_ids_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?
+                    )
                     """,
                     (
                         research_id,
@@ -429,6 +550,14 @@ class SQLiteResearchStore:
                         state.structured_report,
                         state.report_note_id,
                         state.report_note_path,
+                        root_research_id,
+                        parent_research_id,
+                        version_number,
+                        creation_reason,
+                        json.dumps(
+                            trigger_ids,
+                            ensure_ascii=False,
+                        ),
                     ),
                 )
 
@@ -618,6 +747,69 @@ class SQLiteResearchStore:
                 connection.commit()
 
         return research_id
+
+    def get_lineage(
+        self,
+        research_id: str,
+    ) -> ResearchLineage | None:
+        """Return immutable run-lineage metadata."""
+
+        with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT
+                        research_id,
+                        root_research_id,
+                        parent_research_id,
+                        version_number,
+                        creation_reason,
+                        created_from_trigger_ids_json
+                    FROM research_runs
+                    WHERE research_id = ?
+                    """,
+                    (
+                        research_id,
+                    ),
+                ).fetchone()
+
+        if row is None:
+            return None
+
+        trigger_ids_raw = (
+            row[
+                "created_from_trigger_ids_json"
+            ]
+        )
+
+        trigger_ids = (
+            json.loads(trigger_ids_raw)
+            if trigger_ids_raw
+            else []
+        )
+
+        return ResearchLineage(
+            research_id=row["research_id"],
+            root_research_id=(
+                row["root_research_id"]
+                or row["research_id"]
+            ),
+            parent_research_id=(
+                row["parent_research_id"]
+            ),
+            version_number=int(
+                row["version_number"]
+                or 1
+            ),
+            creation_reason=(
+                row["creation_reason"]
+                or "legacy_research"
+            ),
+            created_from_trigger_ids=list(
+                trigger_ids
+            ),
+        )
+
 
     def get(self, research_id: str) -> SummaryState | None:
         """Load and reconstruct one research state."""
@@ -866,26 +1058,108 @@ class InMemoryResearchStore:
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._states: dict[str, SummaryState] = {}
+        self._states: dict[
+            str,
+            SummaryState,
+        ] = {}
+        self._lineage: dict[
+            str,
+            ResearchLineage,
+        ] = {}
 
-    def save(self, state: SummaryState) -> str:
+    def save(
+        self,
+        state: SummaryState,
+        *,
+        parent_research_id: str | None = None,
+        creation_reason: str = "initial_research",
+        created_from_trigger_ids: list[str] | None = None,
+    ) -> str:
         """Store a research state and return its generated research id."""
 
-        research_id = f"research_{uuid.uuid4().hex[:12]}"
+        research_id = (
+            f"research_{uuid.uuid4().hex[:12]}"
+        )
+
+        trigger_ids = _normalize_trigger_ids(
+            created_from_trigger_ids or []
+        )
 
         with self._lock:
+            if parent_research_id is None:
+                root_research_id = research_id
+                version_number = 1
+            else:
+                parent = self._lineage.get(
+                    parent_research_id
+                )
+
+                if parent is None:
+                    raise ValueError(
+                        "parent research run not found"
+                    )
+
+                root_research_id = (
+                    parent.root_research_id
+                )
+
+                version_number = (
+                    parent.version_number + 1
+                )
+
+            lineage = ResearchLineage(
+                research_id=research_id,
+                root_research_id=(
+                    root_research_id
+                ),
+                parent_research_id=(
+                    parent_research_id
+                ),
+                version_number=version_number,
+                creation_reason=creation_reason,
+                created_from_trigger_ids=(
+                    trigger_ids
+                ),
+            )
+
             self._states[research_id] = state
+            self._lineage[research_id] = (
+                lineage
+            )
 
         return research_id
 
-    def get(self, research_id: str) -> SummaryState | None:
+    def get_lineage(
+        self,
+        research_id: str,
+    ) -> ResearchLineage | None:
+        """Return lineage metadata for one run."""
+
+        with self._lock:
+            return self._lineage.get(
+                research_id
+            )
+
+    def get(
+        self,
+        research_id: str,
+    ) -> SummaryState | None:
         """Return the stored state for a research id, if present."""
 
         with self._lock:
-            return self._states.get(research_id)
+            return self._states.get(
+                research_id
+            )
 
-    def list(self) -> list[tuple[str, SummaryState]]:
+    def list(
+        self,
+    ) -> list[
+        tuple[str, SummaryState]
+    ]:
         """Return stored research states in insertion order."""
 
         with self._lock:
-            return list(self._states.items())
+            return list(
+                self._states.items()
+            )
+

@@ -1079,6 +1079,18 @@ class HybridRetrievalResult:
 
 
 @dataclass(kw_only=True)
+class ResearchLineage:
+    """Immutable provenance metadata for one persisted research run."""
+
+    research_id: str
+    root_research_id: str
+    parent_research_id: Optional[str] = field(default=None)
+    version_number: int = field(default=1)
+    creation_reason: str = field(default="initial_research")
+    created_from_trigger_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
