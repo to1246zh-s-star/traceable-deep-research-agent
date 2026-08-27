@@ -283,3 +283,67 @@ def test_non_decision_report_failure_also_degrades_gracefully():
     assert "Attention summary" in report
     assert "Attention sources" in report
     assert "Decision readiness" not in report
+
+
+def test_report_fallback_records_runtime_notice():
+    agent = FailingAgent()
+
+    service = ReportingService(
+        agent,
+        FakeConfig(),
+    )
+
+    state = make_state(
+        "CONFLICTED"
+    )
+
+    service.generate_report(state)
+
+    report_notices = [
+        notice
+        for notice in state.runtime_notices
+        if notice["stage"]
+        == "report_generation"
+    ]
+
+    assert len(report_notices) == 1
+
+    notice = report_notices[0]
+
+    assert notice["degraded"] is True
+
+    assert notice["metadata"] == {
+        "fallback": "deterministic",
+    }
+
+
+def test_report_fallback_records_runtime_notice():
+    agent = FailingAgent()
+
+    service = ReportingService(
+        agent,
+        FakeConfig(),
+    )
+
+    state = make_state(
+        "CONFLICTED"
+    )
+
+    service.generate_report(state)
+
+    report_notices = [
+        notice
+        for notice in state.runtime_notices
+        if notice["stage"]
+        == "report_generation"
+    ]
+
+    assert len(report_notices) == 1
+
+    notice = report_notices[0]
+
+    assert notice["degraded"] is True
+
+    assert notice["metadata"] == {
+        "fallback": "deterministic",
+    }

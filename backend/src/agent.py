@@ -49,6 +49,7 @@ from services.decision_input_builder import (
 )
 from services.decision_pipeline import run_decision_pipeline
 from services.execution_errors import classify_execution_error
+from services.runtime_notices import record_runtime_notice
 from services.execution_trace import ExecutionTraceService
 from services.adaptive_decision_loop import run_adaptive_decision_loop
 from services.adaptive_research import (
@@ -259,11 +260,19 @@ class DeepResearchAgent:
                 state.research_topic,
                 decision,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Technical context extraction failed; "
                 "continuing without architecture context"
             )
+
+            record_runtime_notice(
+                state,
+                stage="technical_context_extraction",
+                error=exc,
+                degraded=True,
+            )
+
             return None
 
     def assess_integration(
@@ -289,11 +298,19 @@ class DeepResearchAgent:
                 decision,
                 technical_context,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Integration assessment failed; "
                 "continuing without architecture assessment"
             )
+
+            record_runtime_notice(
+                state,
+                stage="integration_assessment",
+                error=exc,
+                degraded=True,
+            )
+
             return []
 
     def execute_decision_intelligence(
@@ -404,12 +421,20 @@ class DeepResearchAgent:
                 if pending_proposals
                 else []
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Semantic signal extraction failed; "
                 "preserving reusable semantics and "
                 "conservative neutral proposals"
             )
+
+            record_runtime_notice(
+                state,
+                stage="semantic_signal_extraction",
+                error=exc,
+                degraded=True,
+            )
+
             newly_interpreted = []
 
         semantic_signals = merge_semantic_signals(
@@ -426,11 +451,19 @@ class DeepResearchAgent:
                     state,
                     decision,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "Constraint resolution failed; "
                     "preserving unresolved constraints"
                 )
+
+                record_runtime_notice(
+                    state,
+                    stage="constraint_resolution",
+                    error=exc,
+                    degraded=True,
+                )
+
                 constraint_results = {}
 
         technical_context = (
@@ -622,11 +655,19 @@ class DeepResearchAgent:
             decision = self.extract_decision_case(
                 state.research_topic,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "DecisionCase extraction failed; "
                 "continuing as normal research"
             )
+
+            record_runtime_notice(
+                state,
+                stage="decision_case_extraction",
+                error=exc,
+                degraded=True,
+            )
+
             return None
 
         if decision is not None:
@@ -850,10 +891,17 @@ class DeepResearchAgent:
                 self.execute_adaptive_decision_loop(
                     state
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "Decision intelligence failed; "
                     "continuing with normal report generation"
+                )
+
+                record_runtime_notice(
+                    state,
+                    stage="decision_intelligence",
+                    error=exc,
+                    degraded=True,
                 )
 
         report = self.reporting.generate_report(state)
@@ -999,10 +1047,20 @@ class DeepResearchAgent:
                 self.execute_adaptive_decision_loop(
                     state
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "Decision intelligence failed during streaming; "
                     "continuing with normal report generation"
+                )
+
+                record_runtime_notice(
+                    state,
+                    stage="decision_intelligence",
+                    error=exc,
+                    degraded=True,
+                    metadata={
+                        "streaming": True,
+                    },
                 )
 
         report = self.reporting.generate_report(state)

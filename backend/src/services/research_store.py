@@ -118,6 +118,7 @@ V3_STATE_FIELDS = (
     "evidence_signals",
     "research_analysis",
     "adaptive_research_state",
+    "runtime_notices",
     "decision_readiness",
     "research_budget",
     "research_usage",

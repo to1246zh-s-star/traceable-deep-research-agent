@@ -12,6 +12,7 @@ from config import Configuration
 from utils import strip_thinking_tokens
 from services.text_processing import strip_tool_calls
 from services.decision_reporting import build_decision_reporting_context
+from services.runtime_notices import record_runtime_notice
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +85,26 @@ class ReportingService:
         try:
             response = self._agent.run(prompt)
             self._agent.clear_history()
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Final report LLM failed; using deterministic fallback report"
             )
+
+            record_runtime_notice(
+                state,
+                stage="report_generation",
+                error=exc,
+                degraded=True,
+                metadata={
+                    "fallback": "deterministic",
+                },
+            )
+
             try:
                 self._agent.clear_history()
             except Exception:
                 pass
+
             return self._build_fallback_report(state)
 
         report_text = (response or "").strip()

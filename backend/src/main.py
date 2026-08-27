@@ -219,6 +219,10 @@ class ResearchReplayResponse(BaseModel):
 
     decision: dict[str, Any] | None = None
 
+    runtime_notices: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
 
 def _serialize_v3_value(value: Any) -> Any:
     """Serialize V3 decision dataclasses into JSON-safe structures."""
@@ -502,6 +506,14 @@ def _build_research_replay(
         "decision": _serialize_decision_intelligence(
             state
         ),
+        "runtime_notices": [
+            dict(notice)
+            for notice in getattr(
+                state,
+                "runtime_notices",
+                [],
+            )
+        ],
     }
 
 

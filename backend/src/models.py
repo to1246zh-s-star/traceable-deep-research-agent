@@ -902,6 +902,10 @@ class SummaryState:
     execution_traces: list[ExecutionTrace] = field(default_factory=list)
     execution_events: list[ExecutionEvent] = field(default_factory=list)
     execution_event_history: list[ExecutionEvent] = field(default_factory=list)
+
+    # Structured observability for optional runtime degradation.
+    # Notices must never become business inputs for decision scoring.
+    runtime_notices: list[dict[str, Any]] = field(default_factory=list)
     evidence_items: list[Evidence] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
 
