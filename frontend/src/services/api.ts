@@ -485,6 +485,31 @@ export interface LlmRuntimeCircuitResponse {
   trigger_stage: string | null;
 }
 
+export interface DecisionArtifactResponse {
+  decision_id: string;
+  title: string;
+  status: string;
+  decision_question: string;
+  recommendation: string | null;
+
+  context_lines: string[];
+  candidate_lines: string[];
+  criterion_lines: string[];
+  constraint_lines: string[];
+
+  comparison_lines: string[];
+  readiness_lines: string[];
+  robustness_lines: string[];
+  sensitivity_lines: string[];
+
+  assumption_lines: string[];
+  risk_lines: string[];
+  reevaluation_lines: string[];
+  evidence_lines: string[];
+
+  markdown: string;
+}
+
 export interface ResearchReplayResponse {
   research_id: string;
   research_topic: string;
@@ -497,6 +522,7 @@ export interface ResearchReplayResponse {
   runtime_notices?: RuntimeNoticeResponse[];
   llm_runtime_circuit?: LlmRuntimeCircuitResponse;
   decision: DecisionIntelligenceResponse | null;
+  decision_artifact?: DecisionArtifactResponse | null;
 }
 
 export function getResearchReplay(

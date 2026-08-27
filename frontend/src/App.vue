@@ -387,6 +387,98 @@
                 </section>
               </div>
 
+              <section
+                v-if="researchReplay.decision_artifact"
+                class="decision-artifact-panel"
+                aria-labelledby="decision-artifact-title"
+              >
+                <div class="decision-artifact-heading">
+                  <div>
+                    <p class="trace-eyebrow">
+                      Decision Artifact
+                    </p>
+
+                    <h4 id="decision-artifact-title">
+                      Architecture Decision Record
+                    </h4>
+
+                    <p class="decision-artifact-description">
+                      Deterministic ADR projection from the persisted
+                      decision-intelligence state.
+                    </p>
+                  </div>
+
+                  <span
+                    class="decision-artifact-status"
+                    :class="`decision-artifact-status-${(
+                      researchReplay.decision_artifact.status ||
+                      'PROVISIONAL'
+                    ).toLowerCase()}`"
+                  >
+                    {{
+                      researchReplay.decision_artifact.status ||
+                      "PROVISIONAL"
+                    }}
+                  </span>
+                </div>
+
+                <div class="decision-artifact-summary">
+                  <div>
+                    <span>Decision</span>
+
+                    <strong
+                      v-if="
+                        researchReplay.decision_artifact
+                          .recommendation
+                      "
+                    >
+                      {{
+                        researchReplay.decision_artifact
+                          .recommendation
+                      }}
+                    </strong>
+
+                    <strong v-else>
+                      No structured recommendation recorded.
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Decision ID</span>
+
+                    <code>
+                      {{
+                        researchReplay.decision_artifact
+                          .decision_id
+                      }}
+                    </code>
+                  </div>
+                </div>
+
+                <details class="decision-artifact-preview">
+                  <summary>
+                    ADR Markdown Preview
+                  </summary>
+
+                  <pre>{{
+                    researchReplay.decision_artifact.markdown
+                  }}</pre>
+                </details>
+
+                <div class="decision-artifact-actions">
+                  <button
+                    type="button"
+                    class="secondary-action-button"
+                    :disabled="
+                      !researchReplay.decision_artifact.markdown
+                    "
+                    @click="copyDecisionArtifactMarkdown"
+                  >
+                    Copy Markdown
+                  </button>
+                </div>
+              </section>
+
               <div
                 v-if="researchReplay.decision.stopping_decision"
                 class="decision-stop-row"
@@ -2209,6 +2301,25 @@ function runtimeNoticeClass(errorType: string): string {
 
   return "runtime-notice-neutral";
 }
+
+async function copyDecisionArtifactMarkdown() {
+  const markdown =
+    researchReplay.value?.decision_artifact?.markdown;
+
+  if (!markdown) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(markdown);
+  } catch (error) {
+    console.warn(
+      "Unable to copy decision artifact markdown",
+      error
+    );
+  }
+}
+
 
 async function loadResearchReplay(
   targetResearchId: string
@@ -4970,6 +5081,139 @@ select:focus {
 
   .evidence-inspector-header {
     flex-direction: column;
+  }
+}
+
+
+.decision-artifact-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border:
+    1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.decision-artifact-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.decision-artifact-heading h4 {
+  margin: 3px 0 0;
+}
+
+.decision-artifact-description {
+  max-width: 680px;
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.68;
+}
+
+.decision-artifact-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border:
+    1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+}
+
+.decision-artifact-status-accepted {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(34, 197, 94, 0.10);
+}
+
+.decision-artifact-status-provisional {
+  border-color: rgba(245, 158, 11, 0.30);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.decision-artifact-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.decision-artifact-summary > div {
+  min-width: 0;
+  padding: 10px 11px;
+  border:
+    1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.055);
+}
+
+.decision-artifact-summary span {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.58;
+}
+
+.decision-artifact-summary strong,
+.decision-artifact-summary code {
+  overflow-wrap: anywhere;
+}
+
+.decision-artifact-preview {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top:
+    1px solid rgba(148, 163, 184, 0.14);
+}
+
+.decision-artifact-preview summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  opacity: 0.78;
+}
+
+.decision-artifact-preview pre {
+  max-height: 420px;
+  margin: 12px 0 0;
+  padding: 13px;
+  overflow: auto;
+  border:
+    1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.24);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.decision-artifact-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .decision-artifact-heading {
+    flex-direction: column;
+  }
+
+  .decision-artifact-status {
+    align-self: flex-start;
+  }
+
+  .decision-artifact-summary {
+    grid-template-columns: 1fr;
   }
 }
 
