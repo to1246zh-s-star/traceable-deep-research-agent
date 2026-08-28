@@ -1107,6 +1107,13 @@ class SummaryState:
     # Notices must never become business inputs for decision scoring.
     runtime_notices: list[dict[str, Any]] = field(default_factory=list)
 
+    # Sanitized per-tool observability. Runtime arguments and tool outputs
+    # are deliberately not persisted here. Tool traces must never become
+    # business inputs for decision scoring or readiness.
+    tool_execution_traces: list[dict[str, Any]] = field(
+        default_factory=list
+    )
+
     # Per-run LLM circuit. Observability/orchestration state only;
     # it must never participate in candidate scoring or readiness.
     llm_runtime_circuit: dict[str, Any] = field(

@@ -120,6 +120,7 @@ V3_STATE_FIELDS = (
     "research_analysis",
     "adaptive_research_state",
     "runtime_notices",
+    "tool_execution_traces",
     "llm_runtime_circuit",
     "decision_readiness",
     "research_budget",

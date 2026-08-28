@@ -461,6 +461,10 @@ class ResearchReplayResponse(BaseModel):
         default_factory=list
     )
 
+    tool_execution_traces: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
     llm_runtime_circuit: dict[str, Any] = Field(
         default_factory=dict
     )
@@ -765,6 +769,15 @@ def _build_research_replay(
                 "runtime_notices",
                 [],
             )
+        ],
+        "tool_execution_traces": [
+            dict(trace)
+            for trace in getattr(
+                state,
+                "tool_execution_traces",
+                [],
+            )
+            if isinstance(trace, dict)
         ],
         "llm_runtime_circuit": dict(
             getattr(
