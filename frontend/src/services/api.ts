@@ -547,6 +547,52 @@ export function getResearchVersionDiff(
   );
 }
 
+export interface DecisionEvolutionStepResponse {
+  source_research_id: string;
+  target_research_id: string;
+  root_research_id: string;
+  source_version_number: number;
+  target_version_number: number;
+  target_creation_reason: string;
+  created_from_trigger_ids: string[];
+  diff: {
+    source_research_id: string;
+    target_research_id: string;
+    has_changes: boolean;
+    decision_changes: VersionFieldChangeResponse[];
+    readiness_changes: VersionFieldChangeResponse[];
+    recommendation_changes: VersionFieldChangeResponse[];
+    research_gap_changes: VersionFieldChangeResponse[];
+    evidence_changes: VersionFieldChangeResponse[];
+    assumption_changes: VersionFieldChangeResponse[];
+    trigger_changes: VersionFieldChangeResponse[];
+    architecture_changes: VersionFieldChangeResponse[];
+    unchanged_sections: string[];
+    summary_lines: string[];
+  };
+}
+
+export interface DecisionEvolutionResponse {
+  requested_research_id: string;
+  root_research_id: string;
+  research_ids: string[];
+  steps: DecisionEvolutionStepResponse[];
+  root_version_ids: string[];
+  branch_point_ids: string[];
+  leaf_version_ids: string[];
+  has_branches: boolean;
+}
+
+export function getResearchEvolution(
+  researchId: string
+): Promise<DecisionEvolutionResponse> {
+  return requestJson<DecisionEvolutionResponse>(
+    `/research/${encodeURIComponent(
+      researchId
+    )}/evolution`
+  );
+}
+
 export interface ResearchLineageResponse {
   research_id: string;
   root_research_id: string;

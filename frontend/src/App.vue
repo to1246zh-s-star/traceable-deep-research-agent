@@ -338,6 +338,159 @@
               </p>
             </section>
 
+            <section
+              v-if="
+                researchEvolutionLoading ||
+                (
+                  researchEvolution &&
+                  researchEvolution.steps.length
+                )
+              "
+              class="decision-evolution-panel"
+            >
+              <div class="decision-evolution-heading">
+                <div>
+                  <p class="trace-eyebrow">
+                    Decision Evolution
+                  </p>
+
+                  <h4>
+                    Research lineage changes
+                  </h4>
+                </div>
+
+                <span
+                  v-if="researchEvolutionLoading"
+                  class="decision-evolution-state"
+                >
+                  Loading…
+                </span>
+
+                <span
+                  v-else-if="
+                    researchEvolution?.has_branches
+                  "
+                  class="decision-evolution-branch-badge"
+                >
+                  Branched lineage
+                </span>
+              </div>
+
+              <p class="decision-evolution-note">
+                Parent-to-child structural changes only.
+                Branches are preserved and no version is
+                treated as better than another.
+              </p>
+
+              <div
+                v-if="
+                  !researchEvolutionLoading &&
+                  researchEvolution
+                "
+                class="decision-evolution-list"
+              >
+                <article
+                  v-for="
+                    step in researchEvolution.steps
+                  "
+                  :key="
+                    `${step.source_research_id}->${step.target_research_id}`
+                  "
+                  class="decision-evolution-step"
+                >
+                  <div class="decision-evolution-edge">
+                    <button
+                      type="button"
+                      class="decision-evolution-version"
+                      @click="
+                        selectReplayVersion(
+                          step.source_research_id
+                        )
+                      "
+                    >
+                      {{
+                        evolutionVersionLabel(
+                          step.source_research_id,
+                          step.source_version_number,
+                          researchEvolution
+                        )
+                      }}
+                    </button>
+
+                    <span class="decision-evolution-arrow">
+                      →
+                    </span>
+
+                    <button
+                      type="button"
+                      class="decision-evolution-version"
+                      :class="{
+                        'is-current':
+                          step.target_research_id ===
+                          researchReplay?.research_id
+                      }"
+                      @click="
+                        selectReplayVersion(
+                          step.target_research_id
+                        )
+                      "
+                    >
+                      {{
+                        evolutionVersionLabel(
+                          step.target_research_id,
+                          step.target_version_number,
+                          researchEvolution
+                        )
+                      }}
+                    </button>
+                  </div>
+
+                  <div
+                    class="decision-evolution-meta"
+                  >
+                    <span>
+                      {{
+                        step.target_creation_reason
+                      }}
+                    </span>
+
+                    <span
+                      v-if="
+                        step.created_from_trigger_ids.length
+                      "
+                    >
+                      {{
+                        step.created_from_trigger_ids.length
+                      }}
+                      trigger{{
+                        step.created_from_trigger_ids.length === 1
+                          ? ""
+                          : "s"
+                      }}
+                    </span>
+                  </div>
+
+                  <ul
+                    v-if="
+                      step.diff.summary_lines.length
+                    "
+                    class="decision-evolution-summary"
+                  >
+                    <li
+                      v-for="
+                        line in step.diff.summary_lines
+                      "
+                      :key="
+                        `${step.target_research_id}-${line}`
+                      "
+                    >
+                      {{ line }}
+                    </li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+
             <div class="replay-summary-grid">
               <div class="replay-metric">
                 <span>Tasks</span>
@@ -1763,6 +1916,7 @@ import {
   getResearchClaim,
   getResearchReplay,
   getResearchVersionDiff,
+  getResearchEvolution,
   getResearchTrace,
   listResearchClaims,
   listResearchTraces,
@@ -1771,6 +1925,7 @@ import {
   type ExecutionTraceResponse,
   type ResearchReplayResponse,
   type ResearchVersionDiffResponse,
+  type DecisionEvolutionResponse,
   type ResearchReplayTaskResponse,
   type TraceDetailResponse
 } from "./services/api";
@@ -2091,6 +2246,11 @@ const researchVersionDiff = ref<ResearchVersionDiffResponse | null>(
   null
 );
 const researchVersionDiffLoading = ref(false);
+
+const researchEvolution = ref<DecisionEvolutionResponse | null>(
+  null
+);
+const researchEvolutionLoading = ref(false);
 
 
 function formatResearchStatusLabel(
@@ -2471,6 +2631,72 @@ async function copyDecisionArtifactMarkdown() {
 }
 
 
+function shortResearchVersionId(
+  researchId: string
+) {
+  return researchId
+    .replace(/^research_/, "")
+    .slice(-6);
+}
+
+function evolutionVersionLabel(
+  researchId: string,
+  generation: number,
+  evolution: DecisionEvolutionResponse
+) {
+  const sameGenerationIds = new Set<string>();
+
+  for (const step of evolution.steps) {
+    if (
+      step.source_version_number === generation
+    ) {
+      sameGenerationIds.add(
+        step.source_research_id
+      );
+    }
+
+    if (
+      step.target_version_number === generation
+    ) {
+      sameGenerationIds.add(
+        step.target_research_id
+      );
+    }
+  }
+
+  for (const rootId of evolution.root_version_ids) {
+    if (generation === 1) {
+      sameGenerationIds.add(rootId);
+    }
+  }
+
+  if (sameGenerationIds.size > 1) {
+    return (
+      `g${generation} · ` +
+      shortResearchVersionId(researchId)
+    );
+  }
+
+  return `g${generation}`;
+}
+
+async function loadResearchEvolution(
+  targetResearchId: string
+) {
+  researchEvolutionLoading.value = true;
+
+  try {
+    researchEvolution.value =
+      await getResearchEvolution(
+        targetResearchId
+      );
+  } catch {
+    researchEvolution.value = null;
+  } finally {
+    researchEvolutionLoading.value = false;
+  }
+}
+
 async function loadCurrentVersionDiff(
   replay: ResearchReplayResponse
 ) {
@@ -2529,9 +2755,14 @@ async function loadResearchReplay(
 
     researchReplay.value = replay;
 
-    await loadCurrentVersionDiff(
-      replay
-    );
+    await Promise.all([
+      loadCurrentVersionDiff(
+        replay
+      ),
+      loadResearchEvolution(
+        replay.research_id
+      )
+    ]);
   } catch (err) {
     researchReplay.value = null;
 
@@ -6435,6 +6666,115 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
   margin: 4px 0;
   font-size: 12px;
   line-height: 1.5;
+}
+
+
+.decision-evolution-panel {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.035);
+}
+
+.decision-evolution-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.decision-evolution-heading h4 {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
+.decision-evolution-state {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.decision-evolution-branch-badge {
+  padding: 3px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.decision-evolution-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.decision-evolution-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.decision-evolution-step {
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+}
+
+.decision-evolution-edge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.decision-evolution-version {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  padding: 4px 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.decision-evolution-version.is-current {
+  font-weight: 700;
+  border-color: currentColor;
+}
+
+.decision-evolution-arrow {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.decision-evolution-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.decision-evolution-summary {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.decision-evolution-summary li {
+  margin: 3px 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .decision-evolution-heading {
+    flex-direction: column;
+  }
+
+  .decision-evolution-edge {
+    flex-wrap: wrap;
+  }
 }
 
 </style>
