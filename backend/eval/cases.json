@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "case_id": "technical_research_default",
+      "name": "Technical research baseline",
+      "task": "Evaluate a persisted technical research run",
+      "tags": [
+        "research",
+        "decision",
+        "grounding"
+      ],
+      "expected_tool_names": [
+        "web_search"
+      ],
+      "require_evidence": true,
+      "require_final_answer": true,
+      "metadata": {
+        "description": "Baseline deterministic evaluation for persisted research runs."
+      }
+    },
+    {
+      "case_id": "research_without_required_tool",
+      "name": "Research without mandatory tool assumption",
+      "task": "Evaluate research behavior without requiring a specific external tool",
+      "tags": [
+        "research",
+        "compatibility"
+      ],
+      "expected_tool_names": [],
+      "require_evidence": true,
+      "require_final_answer": true,
+      "metadata": {
+        "description": "Useful for legacy or non-search research runs."
+      }
+    }
+  ]
+}
