@@ -75,6 +75,14 @@ from services.incremental_semantic_signals import (
 )
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
+from services.tool_runtime import (
+    TOOL_SUCCESS,
+    ToolDefinition,
+    ToolInvocation,
+    ToolParameter,
+    ToolRegistry as RuntimeToolRegistry,
+    serialize_tool_trace_for_persistence,
+)
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
 
@@ -112,6 +120,11 @@ class DeepResearchAgent:
         self._execution_trace_service = ExecutionTraceService(
             lock=self._state_lock,
         )
+
+        # Runtime registry used by the actual research execution pipeline.
+        # This registry is separate from HelloAgents' note-tool registry.
+        self._research_tool_registry = RuntimeToolRegistry()
+        self._register_research_runtime_tools()
 
         self.todo_agent = self._create_tool_aware_agent(
             name="研究规划专家",
@@ -1414,6 +1427,189 @@ class DeepResearchAgent:
         return iteration
 
 
+    def _get_research_tool_registry(
+        self,
+    ) -> RuntimeToolRegistry:
+        """Return the per-agent research Tool Runtime.
+
+        Some tests and compatibility paths construct DeepResearchAgent
+        through __new__ without running __init__. Keep runtime
+        infrastructure lazily recoverable, just like other observability
+        services.
+        """
+
+        registry = getattr(
+            self,
+            "_research_tool_registry",
+            None,
+        )
+
+        if registry is None:
+            registry = RuntimeToolRegistry()
+
+            self._research_tool_registry = (
+                registry
+            )
+
+            self._register_research_runtime_tools()
+
+        return registry
+
+    def _register_research_runtime_tools(
+        self,
+    ) -> None:
+        """Register tools used by the real research pipeline."""
+
+        registry = getattr(
+            self,
+            "_research_tool_registry",
+            None,
+        )
+
+        if registry is None:
+            registry = RuntimeToolRegistry()
+            self._research_tool_registry = registry
+
+        # Registration is intentionally idempotent for lazy compatibility.
+        if registry.get("web_search") is not None:
+            return
+
+        registry.register(
+            definition=ToolDefinition(
+                name="web_search",
+                description=(
+                    "Execute the configured research search backend."
+                ),
+                parameters=[
+                    ToolParameter(
+                        name="query",
+                        type="string",
+                        required=True,
+                        description="Research query",
+                    ),
+                    ToolParameter(
+                        name="loop_count",
+                        type="integer",
+                        required=True,
+                        description=(
+                            "Current research loop count"
+                        ),
+                    ),
+                ],
+                source="search",
+                read_only=True,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                        },
+                        "loop_count": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                    },
+                    "required": [
+                        "query",
+                        "loop_count",
+                    ],
+                },
+            ),
+            handler=self._run_research_search_tool,
+        )
+
+    def _run_research_search_tool(
+        self,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bridge the existing dispatch_search contract into Tool Runtime."""
+
+        (
+            search_result,
+            notices,
+            answer_text,
+            backend,
+        ) = dispatch_search(
+            str(arguments["query"]),
+            self.config,
+            int(arguments["loop_count"]),
+        )
+
+        return {
+            "search_result": search_result,
+            "notices": list(notices),
+            "answer_text": answer_text,
+            "backend": backend,
+        }
+
+    def _invoke_research_search_tool(
+        self,
+        state: SummaryState,
+        *,
+        query: str,
+        loop_count: int,
+    ) -> tuple[
+        dict[str, Any] | None,
+        list[str],
+        str | None,
+        str,
+    ]:
+        """Execute real research search through the unified Tool Runtime."""
+
+        registry = (
+            self._get_research_tool_registry()
+        )
+
+        result = registry.invoke(
+            ToolInvocation(
+                tool_name="web_search",
+                arguments={
+                    "query": query,
+                    "loop_count": loop_count,
+                },
+            )
+        )
+
+        persisted_trace = (
+            serialize_tool_trace_for_persistence(
+                result.trace
+            )
+        )
+
+        if persisted_trace is not None:
+            with self._state_lock:
+                state.tool_execution_traces.append(
+                    persisted_trace
+                )
+
+        if result.status != TOOL_SUCCESS:
+            # Preserve the existing executor error taxonomy when the
+            # runtime captured an original provider/bridge exception.
+            # ToolResult remains the structured observability boundary,
+            # while callers still see the original exception semantics.
+            if result.exception is not None:
+                raise result.exception
+
+            raise RuntimeError(
+                "Research search tool failed: "
+                f"{result.error_type or result.status}: "
+                f"{result.error_message or 'unknown error'}"
+            )
+
+        output = result.output
+
+        if not isinstance(output, dict):
+            raise RuntimeError(
+                "Research search tool returned malformed output"
+            )
+
+        return (
+            output.get("search_result"),
+            list(output.get("notices") or []),
+            output.get("answer_text"),
+            str(output.get("backend") or "unknown"),
+        )
+
     def _finish_execution_trace(
         self,
         trace: ExecutionTrace,
@@ -1490,10 +1686,15 @@ class DeepResearchAgent:
                 else state.research_loop_count
             )
 
-            search_result, notices, answer_text, backend = dispatch_search(
-                task.query,
-                self.config,
-                search_loop_count,
+            (
+                search_result,
+                notices,
+                answer_text,
+                backend,
+            ) = self._invoke_research_search_tool(
+                state,
+                query=task.query,
+                loop_count=search_loop_count,
             )
 
             self._emit_execution_event(
