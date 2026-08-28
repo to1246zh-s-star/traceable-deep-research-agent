@@ -25,6 +25,7 @@ from config import Configuration, SearchAPI
 from services.decision_artifact import build_decision_artifact
 from services.execution_trace import ExecutionTraceService
 from services.decision_version_diff import compare_research_versions
+from services.decision_evolution import build_decision_evolution
 from services.research_store import SQLiteResearchStore
 from services.llm_preflight import (
     LLMPreflightGuard,
@@ -113,12 +114,11 @@ class VersionFieldChangeResponse(BaseModel):
     after: Any = None
 
 
-class ResearchVersionDiffResponse(BaseModel):
-    """Deterministic structural diff between two persisted runs."""
+class DeterministicVersionDiffResponse(BaseModel):
+    """Pure persisted-state structural diff payload."""
 
     source_research_id: str
     target_research_id: str
-    same_lineage: bool
     has_changes: bool
 
     decision_changes: list[
@@ -160,6 +160,62 @@ class ResearchVersionDiffResponse(BaseModel):
     summary_lines: list[str] = Field(
         default_factory=list
     )
+
+
+class ResearchVersionDiffResponse(
+    DeterministicVersionDiffResponse
+):
+    """Structural diff plus cross-run lineage provenance."""
+
+    same_lineage: bool
+
+
+class DecisionEvolutionStepResponse(BaseModel):
+    """One persisted parent-to-child evolution edge."""
+
+    source_research_id: str
+    target_research_id: str
+    root_research_id: str
+
+    source_version_number: int
+    target_version_number: int
+
+    target_creation_reason: str
+
+    created_from_trigger_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    diff: DeterministicVersionDiffResponse
+
+
+class DecisionEvolutionResponse(BaseModel):
+    """Branch-aware deterministic decision evolution."""
+
+    requested_research_id: str
+    root_research_id: str
+
+    research_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    steps: list[
+        DecisionEvolutionStepResponse
+    ] = Field(default_factory=list)
+
+    root_version_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    branch_point_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    leaf_version_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    has_branches: bool
 
 
 class ResearchLineageResponse(BaseModel):
@@ -1143,6 +1199,83 @@ def create_app() -> FastAPI:
                 for event in events
             ],
         }
+
+    @app.get(
+        "/research/{research_id}/evolution",
+        response_model=DecisionEvolutionResponse,
+    )
+    def get_research_evolution(
+        research_id: str,
+    ) -> DecisionEvolutionResponse:
+        """Return deterministic branch-aware evolution for one lineage."""
+
+        state = app.state.research_store.get(
+            research_id
+        )
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research run not found",
+            )
+
+        get_lineage = getattr(
+            app.state.research_store,
+            "get_lineage",
+            None,
+        )
+
+        list_lineage = getattr(
+            app.state.research_store,
+            "list_lineage",
+            None,
+        )
+
+        if (
+            not callable(get_lineage)
+            or not callable(list_lineage)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Research lineage is unavailable "
+                    "for this store"
+                ),
+            )
+
+        lineage = get_lineage(
+            research_id
+        )
+
+        if lineage is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Research lineage not found",
+            )
+
+        lineage_items = list_lineage(
+            lineage.root_research_id
+        )
+
+        evolution = build_decision_evolution(
+            root_research_id=(
+                lineage.root_research_id
+            ),
+            lineage_items=lineage_items,
+            load_state=(
+                app.state.research_store.get
+            ),
+        )
+
+        return DecisionEvolutionResponse(
+            requested_research_id=(
+                research_id
+            ),
+            **_serialize_v3_value(
+                evolution
+            ),
+        )
+
 
     @app.get(
         "/research/{target_research_id}/diff/{source_research_id}",

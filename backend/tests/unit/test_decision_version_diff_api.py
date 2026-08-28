@@ -340,3 +340,39 @@ def test_diff_api_exposes_deterministic_summary_lines():
     assert payload["summary_lines"] == [
         "Evidence: 1 added"
     ]
+
+
+def test_standalone_diff_keeps_same_lineage_provenance():
+    app = make_app()
+    client = TestClient(app)
+
+    source_id = (
+        app.state.research_store.save(
+            SummaryState(
+                research_topic="v1",
+            )
+        )
+    )
+
+    target_id = (
+        app.state.research_store.save(
+            SummaryState(
+                research_topic="v2",
+            ),
+            parent_research_id=source_id,
+            creation_reason="reevaluation",
+        )
+    )
+
+    response = client.get(
+        f"/research/{target_id}/diff/{source_id}"
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert (
+        payload["same_lineage"]
+        is True
+    )
