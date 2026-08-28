@@ -487,6 +487,112 @@
                       {{ line }}
                     </li>
                   </ul>
+
+                  <button
+                    v-if="
+                      step.attribution.changed_sections.length
+                    "
+                    type="button"
+                    class="decision-evolution-details-toggle"
+                    @click="
+                      toggleEvolutionStep(
+                        step.source_research_id,
+                        step.target_research_id
+                      )
+                    "
+                  >
+                    {{
+                      isEvolutionStepExpanded(
+                        step.source_research_id,
+                        step.target_research_id
+                      )
+                        ? "Hide change details"
+                        : "Show change details"
+                    }}
+                  </button>
+
+                  <div
+                    v-if="
+                      isEvolutionStepExpanded(
+                        step.source_research_id,
+                        step.target_research_id
+                      )
+                    "
+                    class="decision-evolution-details"
+                  >
+                    <section
+                      v-for="
+                        group in step.attribution.groups.filter(
+                          item => item.has_changes
+                        )
+                      "
+                      :key="
+                        `${step.target_research_id}-${group.section}`
+                      "
+                      class="decision-evolution-attribution-group"
+                    >
+                      <div
+                        class="decision-evolution-attribution-heading"
+                      >
+                        <strong>
+                          {{ group.label }}
+                        </strong>
+
+                        <span>
+                          <template v-if="group.added_count">
+                            +{{ group.added_count }}
+                          </template>
+
+                          <template v-if="group.removed_count">
+                            −{{ group.removed_count }}
+                          </template>
+
+                          <template v-if="group.changed_count">
+                            ~{{ group.changed_count }}
+                          </template>
+                        </span>
+                      </div>
+
+                      <div
+                        class="decision-evolution-attribution-items"
+                      >
+                        <div
+                          v-for="
+                            item in group.items
+                          "
+                          :key="
+                            `${step.target_research_id}-${group.section}-${item.field_name}`
+                          "
+                          class="decision-evolution-attribution-item"
+                        >
+                          <span
+                            class="decision-evolution-change-symbol"
+                            :class="
+                              `is-${item.change_type.toLowerCase()}`
+                            "
+                          >
+                            {{
+                              attributionChangeSymbol(
+                                item.change_type
+                              )
+                            }}
+                          </span>
+
+                          <code>
+                            {{ item.field_name }}
+                          </code>
+                        </div>
+                      </div>
+                    </section>
+
+                    <p
+                      class="decision-evolution-attribution-note"
+                    >
+                      These are persisted structural changes
+                      only. They do not establish causality or
+                      indicate that either version is better.
+                    </p>
+                  </div>
                 </article>
               </div>
             </section>
@@ -2252,6 +2358,10 @@ const researchEvolution = ref<DecisionEvolutionResponse | null>(
 );
 const researchEvolutionLoading = ref(false);
 
+const expandedEvolutionSteps = ref<
+  Set<string>
+>(new Set());
+
 
 function formatResearchStatusLabel(
   value?: string | null
@@ -2630,6 +2740,61 @@ async function copyDecisionArtifactMarkdown() {
   }
 }
 
+
+function evolutionStepKey(
+  sourceResearchId: string,
+  targetResearchId: string
+) {
+  return `${sourceResearchId}->${targetResearchId}`;
+}
+
+function isEvolutionStepExpanded(
+  sourceResearchId: string,
+  targetResearchId: string
+) {
+  return expandedEvolutionSteps.value.has(
+    evolutionStepKey(
+      sourceResearchId,
+      targetResearchId
+    )
+  );
+}
+
+function toggleEvolutionStep(
+  sourceResearchId: string,
+  targetResearchId: string
+) {
+  const key = evolutionStepKey(
+    sourceResearchId,
+    targetResearchId
+  );
+
+  const next = new Set(
+    expandedEvolutionSteps.value
+  );
+
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+
+  expandedEvolutionSteps.value = next;
+}
+
+function attributionChangeSymbol(
+  changeType: string
+) {
+  if (changeType === "ADDED") {
+    return "+";
+  }
+
+  if (changeType === "REMOVED") {
+    return "−";
+  }
+
+  return "~";
+}
 
 function shortResearchVersionId(
   researchId: string
@@ -6775,6 +6940,89 @@ details.adaptive-iteration-card > summary::-webkit-details-marker {
   .decision-evolution-edge {
     flex-wrap: wrap;
   }
+}
+
+
+.decision-evolution-details-toggle {
+  margin-top: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.decision-evolution-details {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.decision-evolution-attribution-group {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.045);
+}
+
+.decision-evolution-attribution-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.decision-evolution-attribution-heading span {
+  display: flex;
+  gap: 6px;
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+.decision-evolution-attribution-items {
+  display: grid;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.decision-evolution-attribution-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 10px;
+}
+
+.decision-evolution-attribution-item code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.decision-evolution-change-symbol {
+  width: 12px;
+  flex: 0 0 12px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.decision-evolution-change-symbol.is-added,
+.decision-evolution-change-symbol.is-removed,
+.decision-evolution-change-symbol.is-changed {
+  opacity: 0.8;
+}
+
+.decision-evolution-attribution-note {
+  margin: 2px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0.55;
 }
 
 </style>

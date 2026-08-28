@@ -547,6 +547,32 @@ export function getResearchVersionDiff(
   );
 }
 
+export interface ChangeAttributionItemResponse {
+  field_name: string;
+  change_type: "ADDED" | "REMOVED" | "CHANGED";
+  before: unknown;
+  after: unknown;
+}
+
+export interface ChangeAttributionGroupResponse {
+  section: string;
+  label: string;
+  items: ChangeAttributionItemResponse[];
+  added_count: number;
+  removed_count: number;
+  changed_count: number;
+  has_changes: boolean;
+}
+
+export interface DecisionChangeAttributionResponse {
+  source_research_id: string;
+  target_research_id: string;
+  has_changes: boolean;
+  groups: ChangeAttributionGroupResponse[];
+  changed_sections: string[];
+  unchanged_sections: string[];
+}
+
 export interface DecisionEvolutionStepResponse {
   source_research_id: string;
   target_research_id: string;
@@ -570,6 +596,7 @@ export interface DecisionEvolutionStepResponse {
     unchanged_sections: string[];
     summary_lines: string[];
   };
+  attribution: DecisionChangeAttributionResponse;
 }
 
 export interface DecisionEvolutionResponse {
