@@ -17,6 +17,10 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from models import ResearchLineage, SummaryState
+from services.decision_change_attribution import (
+    DecisionChangeAttribution,
+    build_change_attribution,
+)
 from services.decision_version_diff import (
     DecisionVersionDiff,
     compare_research_versions,
@@ -42,6 +46,7 @@ class DecisionEvolutionStep:
     )
 
     diff: DecisionVersionDiff
+    attribution: DecisionChangeAttribution
 
 
 @dataclass(kw_only=True)
@@ -269,6 +274,12 @@ def build_decision_evolution(
             target_state=target_state,
         )
 
+        attribution = (
+            build_change_attribution(
+                diff
+            )
+        )
+
         steps.append(
             DecisionEvolutionStep(
                 source_research_id=(
@@ -293,6 +304,7 @@ def build_decision_evolution(
                     target.created_from_trigger_ids
                 ),
                 diff=diff,
+                attribution=attribution,
             )
         )
 

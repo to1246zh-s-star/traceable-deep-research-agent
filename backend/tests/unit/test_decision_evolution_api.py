@@ -412,3 +412,190 @@ def test_evolution_nested_diff_does_not_require_same_lineage_wrapper():
         "same_lineage"
         not in nested_diff
     )
+
+
+def test_evolution_api_exposes_attribution_groups():
+    app = make_app()
+    client = TestClient(app)
+    store = app.state.research_store
+
+    before = SummaryState(
+        research_topic="v1",
+    )
+
+    after = SummaryState(
+        research_topic="v2",
+    )
+
+    before.evidence_items = []
+
+    after.evidence_items = [
+        type(
+            "EvidenceLike",
+            (),
+            {
+                "evidence_id": "ev_new",
+                "content": "new",
+            },
+        )()
+    ]
+
+    v1 = store.save(
+        before
+    )
+
+    v2 = store.save(
+        after,
+        parent_research_id=v1,
+        creation_reason="reevaluation",
+    )
+
+    response = client.get(
+        f"/research/{v2}/evolution"
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    attribution = (
+        payload["steps"][0][
+            "attribution"
+        ]
+    )
+
+    assert (
+        attribution[
+            "source_research_id"
+        ]
+        == v1
+    )
+
+    assert (
+        attribution[
+            "target_research_id"
+        ]
+        == v2
+    )
+
+    evidence_group = next(
+        group
+        for group
+        in attribution["groups"]
+        if group["section"]
+        == "evidence"
+    )
+
+    assert (
+        evidence_group["added_count"]
+        == 1
+    )
+
+    assert (
+        evidence_group["items"][0][
+            "field_name"
+        ]
+        == "evidence.ev_new"
+    )
+
+
+def test_evolution_api_attribution_matches_nested_diff_identity():
+    app = make_app()
+    client = TestClient(app)
+    store = app.state.research_store
+
+    v1 = store.save(
+        SummaryState(
+            research_topic="v1",
+        )
+    )
+
+    v2 = save_child(
+        store,
+        parent=v1,
+        topic="v2",
+    )
+
+    payload = client.get(
+        f"/research/{v2}/evolution"
+    ).json()
+
+    step = payload["steps"][0]
+
+    assert (
+        step["attribution"][
+            "source_research_id"
+        ]
+        == step["diff"][
+            "source_research_id"
+        ]
+    )
+
+    assert (
+        step["attribution"][
+            "target_research_id"
+        ]
+        == step["diff"][
+            "target_research_id"
+        ]
+    )
+
+    assert (
+        step["attribution"][
+            "has_changes"
+        ]
+        == step["diff"][
+            "has_changes"
+        ]
+    )
+
+
+def test_evolution_api_attribution_exposes_no_causal_judgment():
+    app = make_app()
+    client = TestClient(app)
+    store = app.state.research_store
+
+    v1 = store.save(
+        SummaryState(
+            research_topic="v1",
+        )
+    )
+
+    v2 = save_child(
+        store,
+        parent=v1,
+        topic="v2",
+    )
+
+    payload = client.get(
+        f"/research/{v2}/evolution"
+    ).json()
+
+    attribution = (
+        payload["steps"][0][
+            "attribution"
+        ]
+    )
+
+    forbidden = {
+        "cause",
+        "caused_by",
+        "causal_effect",
+        "driver",
+        "preferred_version",
+        "preferred_branch",
+        "better_version",
+        "quality_improved",
+        "winner",
+    }
+
+    assert not (
+        forbidden
+        & set(attribution)
+    )
+
+    for group in attribution["groups"]:
+        assert not (
+            forbidden
+            & set(group)
+        )

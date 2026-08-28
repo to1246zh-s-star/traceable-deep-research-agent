@@ -170,6 +170,53 @@ class ResearchVersionDiffResponse(
     same_lineage: bool
 
 
+class ChangeAttributionItemResponse(BaseModel):
+    """One persisted structural attribution item."""
+
+    field_name: str
+    change_type: str
+    before: Any = None
+    after: Any = None
+
+
+class ChangeAttributionGroupResponse(BaseModel):
+    """One deterministic structural attribution group."""
+
+    section: str
+    label: str
+
+    items: list[
+        ChangeAttributionItemResponse
+    ] = Field(default_factory=list)
+
+    added_count: int = 0
+    removed_count: int = 0
+    changed_count: int = 0
+
+    has_changes: bool = False
+
+
+class DecisionChangeAttributionResponse(BaseModel):
+    """Detailed deterministic attribution for one version edge."""
+
+    source_research_id: str
+    target_research_id: str
+
+    has_changes: bool
+
+    groups: list[
+        ChangeAttributionGroupResponse
+    ] = Field(default_factory=list)
+
+    changed_sections: list[str] = Field(
+        default_factory=list
+    )
+
+    unchanged_sections: list[str] = Field(
+        default_factory=list
+    )
+
+
 class DecisionEvolutionStepResponse(BaseModel):
     """One persisted parent-to-child evolution edge."""
 
@@ -187,6 +234,8 @@ class DecisionEvolutionStepResponse(BaseModel):
     )
 
     diff: DeterministicVersionDiffResponse
+
+    attribution: DecisionChangeAttributionResponse
 
 
 class DecisionEvolutionResponse(BaseModel):

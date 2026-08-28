@@ -466,3 +466,177 @@ def test_evolution_contains_no_quality_judgment_fields():
         forbidden
         & set(vars(timeline.steps[0]))
     )
+
+
+def test_evolution_step_contains_deterministic_attribution():
+    before = state("before")
+    after = state("after")
+
+    before.evidence_items = []
+
+    after.evidence_items = [
+        type(
+            "EvidenceLike",
+            (),
+            {
+                "evidence_id": "ev_new",
+                "content": "new",
+            },
+        )()
+    ]
+
+    items = [
+        lineage(
+            research_id="v1",
+            root="v1",
+            parent=None,
+            version=1,
+        ),
+        lineage(
+            research_id="v2",
+            root="v1",
+            parent="v1",
+            version=2,
+        ),
+    ]
+
+    states = {
+        "v1": before,
+        "v2": after,
+    }
+
+    timeline = build_decision_evolution(
+        root_research_id="v1",
+        lineage_items=items,
+        load_state=states.get,
+    )
+
+    step = timeline.steps[0]
+
+    assert (
+        step.attribution.source_research_id
+        == "v1"
+    )
+
+    assert (
+        step.attribution.target_research_id
+        == "v2"
+    )
+
+    evidence_group = next(
+        group
+        for group in step.attribution.groups
+        if group.section == "evidence"
+    )
+
+    assert evidence_group.added_count == 1
+
+    assert (
+        evidence_group.items[0].field_name
+        == "evidence.ev_new"
+    )
+
+
+def test_attribution_is_projection_of_same_step_diff():
+    before = state("before")
+    after = state("after")
+
+    before.evidence_items = []
+    after.evidence_items = []
+
+    items = [
+        lineage(
+            research_id="v1",
+            root="v1",
+            parent=None,
+            version=1,
+        ),
+        lineage(
+            research_id="v2",
+            root="v1",
+            parent="v1",
+            version=2,
+        ),
+    ]
+
+    states = {
+        "v1": before,
+        "v2": after,
+    }
+
+    timeline = build_decision_evolution(
+        root_research_id="v1",
+        lineage_items=items,
+        load_state=states.get,
+    )
+
+    step = timeline.steps[0]
+
+    assert (
+        step.attribution.has_changes
+        == step.diff.has_changes
+    )
+
+    assert (
+        step.attribution.source_research_id
+        == step.diff.source_research_id
+    )
+
+    assert (
+        step.attribution.target_research_id
+        == step.diff.target_research_id
+    )
+
+
+def test_evolution_attribution_has_no_causal_or_quality_fields():
+    items = [
+        lineage(
+            research_id="v1",
+            root="v1",
+            parent=None,
+            version=1,
+        ),
+        lineage(
+            research_id="v2",
+            root="v1",
+            parent="v1",
+            version=2,
+        ),
+    ]
+
+    states = {
+        "v1": state("v1"),
+        "v2": state("v2"),
+    }
+
+    timeline = build_decision_evolution(
+        root_research_id="v1",
+        lineage_items=items,
+        load_state=states.get,
+    )
+
+    attribution = (
+        timeline.steps[0].attribution
+    )
+
+    forbidden = {
+        "cause",
+        "caused_by",
+        "causal_effect",
+        "better_version",
+        "preferred_version",
+        "preferred_branch",
+        "improvement",
+        "winner",
+    }
+
+    assert not (
+        forbidden
+        & set(vars(attribution))
+    )
+
+    for group in attribution.groups:
+        assert not (
+            forbidden
+            & set(vars(group))
+        )
