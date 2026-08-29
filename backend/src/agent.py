@@ -75,7 +75,11 @@ from services.incremental_semantic_signals import (
 )
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
+from services.observable_llm import (
+    ObservableHelloAgentsLLM,
+)
 from services.runtime_efficiency import (
+    apply_llm_usage_snapshot,
     finish_run_timer,
     start_run_timer,
 )
@@ -703,7 +707,9 @@ class DeepResearchAgent:
             if self.config.llm_api_key:
                 llm_kwargs["api_key"] = self.config.llm_api_key
 
-        return HelloAgentsLLM(**llm_kwargs)
+        return ObservableHelloAgentsLLM(
+            **llm_kwargs
+        )
 
     def _create_tool_aware_agent(self, *, name: str, system_prompt: str) -> ToolAwareSimpleAgent:
         """Instantiate a ToolAwareSimpleAgent sharing tool registry and tracker."""
@@ -953,6 +959,19 @@ class DeepResearchAgent:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
         run_started_counter = start_run_timer()
+
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "reset_usage",
+        ):
+            llm.reset_usage()
+
         self._last_state = state
         self._attach_decision_case(state)
         state.todo_items = self.planner.plan_todo_list(state)
@@ -991,6 +1010,36 @@ class DeepResearchAgent:
         state.structured_report = report
         state.running_summary = report
 
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "usage_snapshot",
+        ):
+            apply_llm_usage_snapshot(
+                state,
+                llm.usage_snapshot(),
+            )
+
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "usage_snapshot",
+        ):
+            apply_llm_usage_snapshot(
+                state,
+                llm.usage_snapshot(),
+            )
+
         finish_run_timer(
             state,
             started_counter=run_started_counter,
@@ -1008,6 +1057,19 @@ class DeepResearchAgent:
         """Execute the workflow yielding incremental progress events."""
         state = SummaryState(research_topic=topic)
         run_started_counter = start_run_timer()
+
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "reset_usage",
+        ):
+            llm.reset_usage()
+
         self._last_state = state
         self._attach_decision_case(state)
         logger.debug("Starting streaming research: topic=%s", topic)
@@ -1158,6 +1220,36 @@ class DeepResearchAgent:
             yield event
         state.structured_report = report
         state.running_summary = report
+
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "usage_snapshot",
+        ):
+            apply_llm_usage_snapshot(
+                state,
+                llm.usage_snapshot(),
+            )
+
+        llm = getattr(
+            self,
+            "llm",
+            None,
+        )
+
+        if hasattr(
+            llm,
+            "usage_snapshot",
+        ):
+            apply_llm_usage_snapshot(
+                state,
+                llm.usage_snapshot(),
+            )
 
         finish_run_timer(
             state,

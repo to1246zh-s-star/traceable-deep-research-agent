@@ -1118,6 +1118,10 @@ class RuntimeEfficiency:
         default=None
     )
 
+    llm_usage_complete: bool | None = field(
+        default=None
+    )
+
     estimated_cost: float | None = field(
         default=None
     )

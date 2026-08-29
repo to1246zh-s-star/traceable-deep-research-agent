@@ -81,3 +81,97 @@ def record_llm_call(
         )
         + 1
     )
+
+
+def apply_llm_usage_snapshot(
+    state: SummaryState,
+    snapshot: dict[str, int | None],
+) -> None:
+    """Copy provider-observed LLM usage into run observability."""
+
+    efficiency = ensure_runtime_efficiency(
+        state
+    )
+
+    call_count = snapshot.get(
+        "call_count"
+    )
+
+    if isinstance(
+        call_count,
+        int,
+    ):
+        efficiency.llm_call_count = max(
+            0,
+            call_count,
+        )
+
+    prompt_tokens = snapshot.get(
+        "prompt_tokens"
+    )
+
+    completion_tokens = snapshot.get(
+        "completion_tokens"
+    )
+
+    total_tokens = snapshot.get(
+        "total_tokens"
+    )
+
+    efficiency.prompt_tokens = (
+        prompt_tokens
+        if isinstance(
+            prompt_tokens,
+            int,
+        )
+        else None
+    )
+
+    efficiency.completion_tokens = (
+        completion_tokens
+        if isinstance(
+            completion_tokens,
+            int,
+        )
+        else None
+    )
+
+    efficiency.total_tokens = (
+        total_tokens
+        if isinstance(
+            total_tokens,
+            int,
+        )
+        else None
+    )
+
+    calls_with_usage = snapshot.get(
+        "calls_with_usage"
+    )
+
+    if (
+        isinstance(call_count, int)
+        and isinstance(
+            calls_with_usage,
+            int,
+        )
+    ):
+        efficiency.llm_usage_complete = (
+            call_count > 0
+            and calls_with_usage
+            == call_count
+        )
+    else:
+        efficiency.llm_usage_complete = None
+
+    if efficiency.llm_usage_complete is not True:
+        # Partial token totals must not masquerade as full-run usage.
+        efficiency.prompt_tokens = None
+        efficiency.completion_tokens = None
+        efficiency.total_tokens = None
+
+    # Cost remains intentionally unknown until explicit trusted pricing
+    # configuration exists.
+    efficiency.estimated_cost = None
+    efficiency.cost_currency = None
+    efficiency.cost_basis = None

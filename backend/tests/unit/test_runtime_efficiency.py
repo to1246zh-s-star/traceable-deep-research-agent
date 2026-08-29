@@ -96,3 +96,81 @@ def test_token_and_cost_defaults_are_unknown():
     assert efficiency.completion_tokens is None
     assert efficiency.total_tokens is None
     assert efficiency.estimated_cost is None
+
+
+def test_complete_llm_usage_is_persisted_to_efficiency():
+    from services.runtime_efficiency import (
+        apply_llm_usage_snapshot,
+    )
+
+    state = SummaryState()
+
+    apply_llm_usage_snapshot(
+        state,
+        {
+            "call_count": 2,
+            "calls_with_usage": 2,
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        },
+    )
+
+    efficiency = state.runtime_efficiency
+
+    assert efficiency.llm_call_count == 2
+    assert efficiency.llm_usage_complete is True
+    assert efficiency.prompt_tokens == 100
+    assert efficiency.completion_tokens == 50
+    assert efficiency.total_tokens == 150
+
+
+def test_partial_llm_usage_stays_unknown():
+    from services.runtime_efficiency import (
+        apply_llm_usage_snapshot,
+    )
+
+    state = SummaryState()
+
+    apply_llm_usage_snapshot(
+        state,
+        {
+            "call_count": 2,
+            "calls_with_usage": 1,
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        },
+    )
+
+    efficiency = state.runtime_efficiency
+
+    assert efficiency.llm_call_count == 2
+    assert efficiency.llm_usage_complete is False
+
+    assert efficiency.prompt_tokens is None
+    assert efficiency.completion_tokens is None
+    assert efficiency.total_tokens is None
+
+
+def test_cost_remains_unknown_after_usage_snapshot():
+    from services.runtime_efficiency import (
+        apply_llm_usage_snapshot,
+    )
+
+    state = SummaryState()
+
+    apply_llm_usage_snapshot(
+        state,
+        {
+            "call_count": 1,
+            "calls_with_usage": 1,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        },
+    )
+
+    assert state.runtime_efficiency.estimated_cost is None
+    assert state.runtime_efficiency.cost_currency is None
+    assert state.runtime_efficiency.cost_basis is None
