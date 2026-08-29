@@ -174,3 +174,40 @@ def test_cost_remains_unknown_after_usage_snapshot():
     assert state.runtime_efficiency.estimated_cost is None
     assert state.runtime_efficiency.cost_currency is None
     assert state.runtime_efficiency.cost_basis is None
+
+
+def test_finalize_usage_then_applies_explicit_pricing():
+    from decimal import Decimal
+
+    from services.llm_pricing import LLMPricingRegistry, LLMPricingRule
+    from services.runtime_efficiency import finalize_llm_observability
+
+    state = SummaryState()
+    registry = LLMPricingRegistry(
+        [
+            LLMPricingRule(
+                provider="custom",
+                model_id="priced-model",
+                input_price_per_1m_tokens=Decimal("2"),
+                output_price_per_1m_tokens=Decimal("4"),
+                currency="USD",
+            )
+        ]
+    )
+
+    finalize_llm_observability(
+        state,
+        {
+            "call_count": 1,
+            "calls_with_usage": 1,
+            "prompt_tokens": 1000,
+            "completion_tokens": 500,
+            "total_tokens": 1500,
+        },
+        provider="custom",
+        model_id="priced-model",
+        pricing_registry=registry,
+    )
+
+    assert state.runtime_efficiency.llm_usage_complete is True
+    assert state.runtime_efficiency.estimated_cost == 0.004

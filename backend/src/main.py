@@ -571,6 +571,27 @@ def _serialize_evidence(evidence: Any) -> dict[str, Any]:
     }
 
 
+def _serialize_runtime_efficiency(state: Any) -> dict[str, Any]:
+    """Expose run observability without turning it into decision truth."""
+
+    efficiency = getattr(state, "runtime_efficiency", None)
+    field_names = (
+        "latency_ms",
+        "llm_call_count",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "llm_usage_complete",
+        "estimated_cost",
+        "cost_currency",
+        "cost_basis",
+    )
+    return {
+        name: getattr(efficiency, name, None)
+        for name in field_names
+    }
+
+
 def _serialize_claim(claim: Any) -> dict[str, Any]:
     return {
         "claim_id": claim.claim_id,
@@ -770,6 +791,7 @@ def _build_research_replay(
                 [],
             )
         ],
+        "runtime_efficiency": _serialize_runtime_efficiency(state),
         "tool_execution_traces": [
             dict(trace)
             for trace in getattr(

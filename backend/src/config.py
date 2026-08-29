@@ -104,6 +104,14 @@ class Configuration(BaseModel):
         title="LLM Model ID",
         description="Optional model identifier for custom OpenAI-compatible services",
     )
+    llm_pricing_rules_json: Optional[str] = Field(
+        default=None,
+        title="Explicit LLM Pricing Rules",
+        description=(
+            "Optional trusted JSON pricing registry. No public pricing is "
+            "assumed when this value is unset."
+        ),
+    )
 
     @classmethod
     def from_env(cls, overrides: Optional[dict[str, Any]] = None) -> "Configuration":
@@ -124,6 +132,7 @@ class Configuration(BaseModel):
             "llm_api_key": os.getenv("LLM_API_KEY"),
             "llm_model_id": os.getenv("LLM_MODEL_ID"),
             "llm_base_url": os.getenv("LLM_BASE_URL"),
+            "llm_pricing_rules_json": os.getenv("LLM_PRICING_RULES_JSON"),
             "lmstudio_base_url": os.getenv("LMSTUDIO_BASE_URL"),
             "ollama_base_url": os.getenv("OLLAMA_BASE_URL"),
             "max_web_research_loops": os.getenv("MAX_WEB_RESEARCH_LOOPS"),

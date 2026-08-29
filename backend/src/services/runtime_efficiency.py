@@ -8,6 +8,10 @@ from models import (
     RuntimeEfficiency,
     SummaryState,
 )
+from services.llm_pricing import (
+    LLMPricingRegistry,
+    apply_trusted_cost_estimate,
+)
 
 
 def ensure_runtime_efficiency(
@@ -175,3 +179,22 @@ def apply_llm_usage_snapshot(
     efficiency.estimated_cost = None
     efficiency.cost_currency = None
     efficiency.cost_basis = None
+
+
+def finalize_llm_observability(
+    state: SummaryState,
+    snapshot: dict[str, int | None],
+    *,
+    provider: str | None,
+    model_id: str | None,
+    pricing_registry: LLMPricingRegistry,
+) -> None:
+    """Finalize provider usage first, then apply trusted explicit pricing."""
+
+    apply_llm_usage_snapshot(state, snapshot)
+    apply_trusted_cost_estimate(
+        ensure_runtime_efficiency(state),
+        provider=provider,
+        model_id=model_id,
+        registry=pricing_registry,
+    )

@@ -79,10 +79,11 @@ from services.observable_llm import (
     ObservableHelloAgentsLLM,
 )
 from services.runtime_efficiency import (
-    apply_llm_usage_snapshot,
+    finalize_llm_observability,
     finish_run_timer,
     start_run_timer,
 )
+from services.llm_pricing import LLMPricingRegistry
 from services.tool_runtime import (
     TOOL_SUCCESS,
     ToolDefinition,
@@ -106,6 +107,9 @@ class DeepResearchAgent:
     def __init__(self, config: Configuration | None = None) -> None:
         """Initialise the coordinator with configuration and shared tools."""
         self.config = config or Configuration.from_env()
+        self._llm_pricing_registry = LLMPricingRegistry.from_json(
+            self.config.llm_pricing_rules_json
+        )
         self.llm = self._init_llm()
 
         self.note_tool = (
@@ -679,6 +683,40 @@ class DeepResearchAgent:
 
         return getattr(self, "_last_state", None)
 
+    def _finalize_llm_observability(
+        self,
+        state: SummaryState,
+    ) -> None:
+        """Finalize exact provider usage and explicitly configured cost."""
+
+        llm = getattr(self, "llm", None)
+        if not hasattr(llm, "usage_snapshot"):
+            return
+
+        registry = getattr(
+            self,
+            "_llm_pricing_registry",
+            LLMPricingRegistry(),
+        )
+        config = getattr(self, "config", None)
+        provider = getattr(config, "llm_provider", None)
+        resolve_model = getattr(config, "resolved_model", None)
+        model_id = (
+            resolve_model()
+            if callable(resolve_model)
+            else (
+                getattr(config, "llm_model_id", None)
+                or getattr(config, "local_llm", None)
+            )
+        )
+        finalize_llm_observability(
+            state,
+            llm.usage_snapshot(),
+            provider=provider,
+            model_id=model_id,
+            pricing_registry=registry,
+        )
+
     def _init_llm(self) -> HelloAgentsLLM:
         """Instantiate HelloAgentsLLM following configuration preferences."""
         llm_kwargs: dict[str, Any] = {"temperature": 0.0}
@@ -1010,35 +1048,7 @@ class DeepResearchAgent:
         state.structured_report = report
         state.running_summary = report
 
-        llm = getattr(
-            self,
-            "llm",
-            None,
-        )
-
-        if hasattr(
-            llm,
-            "usage_snapshot",
-        ):
-            apply_llm_usage_snapshot(
-                state,
-                llm.usage_snapshot(),
-            )
-
-        llm = getattr(
-            self,
-            "llm",
-            None,
-        )
-
-        if hasattr(
-            llm,
-            "usage_snapshot",
-        ):
-            apply_llm_usage_snapshot(
-                state,
-                llm.usage_snapshot(),
-            )
+        self._finalize_llm_observability(state)
 
         finish_run_timer(
             state,
@@ -1221,35 +1231,7 @@ class DeepResearchAgent:
         state.structured_report = report
         state.running_summary = report
 
-        llm = getattr(
-            self,
-            "llm",
-            None,
-        )
-
-        if hasattr(
-            llm,
-            "usage_snapshot",
-        ):
-            apply_llm_usage_snapshot(
-                state,
-                llm.usage_snapshot(),
-            )
-
-        llm = getattr(
-            self,
-            "llm",
-            None,
-        )
-
-        if hasattr(
-            llm,
-            "usage_snapshot",
-        ):
-            apply_llm_usage_snapshot(
-                state,
-                llm.usage_snapshot(),
-            )
+        self._finalize_llm_observability(state)
 
         finish_run_timer(
             state,

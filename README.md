@@ -681,6 +681,19 @@ uv sync --extra langgraph
 python -m services.langgraph_demo
 ```
 
+### Cost and latency observability
+
+LLM call counts and token usage are collected from provider response metadata
+at the provider boundary; token counts are never inferred from prompt length.
+Run latency is measured once around the whole orchestration with a monotonic
+wall-clock timer, so concurrent task durations are not added together.
+
+Cost remains unknown unless every provider call reports usage, the provider
+and model are known, and an exact trusted pricing rule is supplied through
+`LLM_PRICING_RULES_JSON`. Rules specify provider, model, input/output prices,
+currency, and pricing basis. The application includes no assumed public price
+table: missing or incomplete inputs leave `estimated_cost` as `None`.
+
 The long-term goal of this repository is to become:
 
 > A traceable, evidence-aware, and adaptive deep research agent with budget-aware planning, claim–evidence alignment, citation validation, and hybrid retrieval.
