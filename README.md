@@ -656,6 +656,31 @@ Add screenshots or a demo GIF here after uploading them to the repository.
 
 ## Future Project Positioning
 
+### LangGraph compatibility
+
+The production Agent uses a custom orchestration runtime because this project
+was built to explore orchestration mechanics directly. That runtime already
+owns persistent `SummaryState`, tool execution, context budgets, deterministic
+stopping, replay/version history, resilience, evaluation, and technical
+decision semantics.
+
+Phase 47 adds an optional, thin LangGraph adapter rather than rewriting those
+responsibilities. The mapping is direct: `SummaryState` is referenced by a
+thin graph state; planning, research, decision enrichment, and reporting are
+nodes; the existing stopping decision controls a conditional edge; and the
+existing research store is the checkpoint-compatible persistence boundary.
+The unified tool runtime remains responsible for external tool execution.
+
+This compatibility is useful for teams that already use LangGraph and makes
+the architecture easy to discuss in terms of State, Nodes, Conditional Edges,
+and Checkpoints. It is an interoperability option, not a claim that custom
+orchestration is universally preferable. LangGraph remains optional:
+
+```bash
+uv sync --extra langgraph
+python -m services.langgraph_demo
+```
+
 The long-term goal of this repository is to become:
 
 > A traceable, evidence-aware, and adaptive deep research agent with budget-aware planning, claim–evidence alignment, citation validation, and hybrid retrieval.
