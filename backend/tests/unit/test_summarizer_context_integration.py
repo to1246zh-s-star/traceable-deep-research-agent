@@ -137,3 +137,70 @@ def test_summarizer_preserves_legacy_labels():
         "任务上下文："
         in prompt
     )
+
+
+def test_summarizer_budget_keeps_critical_task_context_metadata():
+    agent = RecordingAgent()
+
+    service = SummarizationService(
+        lambda: agent,
+        Config(),
+    )
+
+    state = SummaryState(
+        research_topic="Large context research"
+    )
+
+    very_large_context = (
+        "retrieved-content-" * 5000
+    )
+
+    service.summarize_task(
+        state,
+        _task(),
+        very_large_context,
+    )
+
+    prompt = agent.prompts[0]
+
+    assert (
+        "任务主题：Large context research"
+        in prompt
+    )
+
+    assert (
+        "任务名称：Attention"
+        in prompt
+    )
+
+    assert (
+        very_large_context
+        not in prompt
+    )
+
+
+def test_summarizer_budget_keeps_normal_context_when_it_fits():
+    agent = RecordingAgent()
+
+    service = SummarizationService(
+        lambda: agent,
+        Config(),
+    )
+
+    state = SummaryState(
+        research_topic="Normal context"
+    )
+
+    context = (
+        "Short retrieved evidence"
+    )
+
+    service.summarize_task(
+        state,
+        _task(),
+        context,
+    )
+
+    prompt = agent.prompts[0]
+
+    assert context in prompt

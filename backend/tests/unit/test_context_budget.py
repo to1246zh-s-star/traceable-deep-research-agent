@@ -266,3 +266,52 @@ def test_budget_result_can_be_assembled():
     assert "hello" in (
         assembled.rendered_text
     )
+
+
+def test_budget_result_converts_back_to_selection():
+    from services.context_engineering import (
+        selection_from_budget_result,
+    )
+
+    section = ContextSection(
+        name="Important",
+        content="context",
+    )
+
+    original = ContextSelection(
+        purpose="summary",
+        sections=(
+            section,
+        ),
+    )
+
+    estimated = (
+        ContextUnitEstimator().estimate(
+            section
+        )
+    )
+
+    result = ContextBudgetPlanner().apply(
+        original,
+        ContextBudget(
+            max_units=estimated,
+        ),
+    )
+
+    converted = (
+        selection_from_budget_result(
+            result
+        )
+    )
+
+    assert (
+        converted.purpose
+        == "summary"
+    )
+
+    assert (
+        converted.sections
+        == (
+            section,
+        )
+    )

@@ -427,3 +427,14 @@ class ContextBudgetPlanner:
                 dropped
             ),
         )
+
+
+def selection_from_budget_result(
+    result: ContextBudgetResult,
+) -> ContextSelection:
+    """Convert a budget decision back into an assemblable selection."""
+
+    return ContextSelection(
+        purpose=result.purpose,
+        sections=result.selected_sections,
+    )

@@ -11,6 +11,9 @@ from models import SummaryState, TodoItem
 
 from services.context_engineering import (
     ContextAssembler,
+    ContextBudget,
+    ContextBudgetPlanner,
+    selection_from_budget_result,
 )
 from services.summarizer_context import (
     select_summarizer_context,
@@ -19,6 +22,14 @@ from config import Configuration
 from utils import strip_thinking_tokens
 from services.notes import build_note_guidance
 from services.text_processing import strip_tool_calls
+
+
+SUMMARIZER_CONTEXT_MAX_UNITS = 12000
+SUMMARIZER_RESERVED_OUTPUT_UNITS = 2000
+
+
+SUMMARIZER_CONTEXT_MAX_UNITS = 12000
+SUMMARIZER_RESERVED_OUTPUT_UNITS = 2000
 
 
 class SummarizationService:
@@ -159,9 +170,27 @@ class SummarizationService:
             )
         )
 
+        budget_result = (
+            ContextBudgetPlanner().apply(
+                context_selection,
+                ContextBudget(
+                    max_units=
+                        SUMMARIZER_CONTEXT_MAX_UNITS,
+                    reserved_output_units=
+                        SUMMARIZER_RESERVED_OUTPUT_UNITS,
+                ),
+            )
+        )
+
+        budgeted_selection = (
+            selection_from_budget_result(
+                budget_result
+            )
+        )
+
         assembled_context = (
             ContextAssembler().assemble(
-                context_selection
+                budgeted_selection
             )
         )
 
