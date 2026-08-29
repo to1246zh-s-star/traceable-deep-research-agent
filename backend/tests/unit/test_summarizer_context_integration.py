@@ -204,3 +204,56 @@ def test_summarizer_budget_keeps_normal_context_when_it_fits():
     prompt = agent.prompts[0]
 
     assert context in prompt
+
+
+def test_summarizer_records_budget_trace():
+    agent = RecordingAgent()
+
+    service = SummarizationService(
+        lambda: agent,
+        Config(),
+    )
+
+    state = SummaryState(
+        research_topic="Budget trace"
+    )
+
+    large_context = (
+        "large-context-" * 5000
+    )
+
+    service.summarize_task(
+        state,
+        _task(),
+        large_context,
+    )
+
+    assert (
+        state.context_budget_traces
+    )
+
+    trace = (
+        state.context_budget_traces[-1]
+    )
+
+    assert (
+        trace.purpose
+        == "task_summary"
+    )
+
+    decisions = {
+        item.section_name: item
+        for item in trace.decisions
+    }
+
+    assert (
+        decisions["Task Context"]
+        .included
+        is False
+    )
+
+    assert (
+        decisions["Task Context"]
+        .reason
+        == "budget_exceeded"
+    )

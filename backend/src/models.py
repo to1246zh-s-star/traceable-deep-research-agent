@@ -1091,6 +1091,40 @@ class ResearchLineage:
 
 
 @dataclass(kw_only=True)
+class ContextBudgetTraceDecision:
+    """Sanitized context-budget decision for one section."""
+
+    section_name: str = field(default="")
+
+    estimated_units: int = field(default=0)
+
+    priority: int = field(default=0)
+
+    included: bool = field(default=False)
+
+    reason: str = field(default="")
+
+
+@dataclass(kw_only=True)
+class ContextBudgetTrace:
+    """Sanitized observability for one context-budget application."""
+
+    purpose: str = field(default="")
+
+    available_units: int = field(default=0)
+
+    used_units: int = field(default=0)
+
+    overflow: bool = field(default=False)
+
+    decisions: list[
+        ContextBudgetTraceDecision
+    ] = field(
+        default_factory=list
+    )
+
+
+@dataclass(kw_only=True)
 class RuntimeEfficiency:
     """Run-level Agent efficiency observations.
 
@@ -1161,6 +1195,12 @@ class SummaryState:
 
     # Run-level efficiency observability only. It must never participate
     # in candidate scoring, readiness, recommendation, or stopping truth.
+    context_budget_traces: list[
+        ContextBudgetTrace
+    ] = field(
+        default_factory=list
+    )
+
     runtime_efficiency: RuntimeEfficiency = field(
         default_factory=RuntimeEfficiency
     )

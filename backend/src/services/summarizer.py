@@ -15,6 +15,9 @@ from services.context_engineering import (
     ContextBudgetPlanner,
     selection_from_budget_result,
 )
+from services.context_budget_trace import (
+    record_context_budget_trace,
+)
 from services.summarizer_context import (
     select_summarizer_context,
 )
@@ -180,6 +183,11 @@ class SummarizationService:
                         SUMMARIZER_RESERVED_OUTPUT_UNITS,
                 ),
             )
+        )
+
+        record_context_budget_trace(
+            state,
+            budget_result,
         )
 
         budgeted_selection = (
