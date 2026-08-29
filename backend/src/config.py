@@ -21,6 +21,8 @@ class Configuration(BaseModel):
 
     max_web_research_loops: int = Field(
         default=3,
+        ge=1,
+        le=20,
         title="Research Depth",
         description="Number of research iterations to perform",
     )

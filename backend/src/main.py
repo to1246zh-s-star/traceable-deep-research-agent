@@ -8,11 +8,11 @@ import sys
 from copy import deepcopy
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import Any, AsyncIterator, Dict, Iterator, Optional
+from typing import Any, AsyncIterator, Dict, Iterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,10 @@ from services.execution_trace import ExecutionTraceService
 from services.decision_version_diff import compare_research_versions
 from services.decision_evolution import build_decision_evolution
 from services.research_store import SQLiteResearchStore
+from services.deployment_config import (
+    safe_endpoint_for_log,
+    validate_deployment_config,
+)
 from services.llm_preflight import (
     LLMPreflightGuard,
     LLMPreflightResult,
@@ -811,17 +815,6 @@ def _build_research_replay(
     }
 
 
-def _mask_secret(value: Optional[str], visible: int = 4) -> str:
-    """Mask sensitive tokens while keeping leading and trailing characters."""
-    if not value:
-        return "unset"
-
-    if len(value) <= visible * 2:
-        return "*" * len(value)
-
-    return f"{value[:visible]}...{value[-visible:]}"
-
-
 def _build_config(payload: ResearchRequest) -> Configuration:
     overrides: Dict[str, Any] = {}
 
@@ -871,20 +864,21 @@ def _llm_unavailable_detail(
 
 def create_app() -> FastAPI:
     config = Configuration.from_env()
+    deployment_status = validate_deployment_config(config)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         if config.llm_provider == "ollama":
-            base_url = config.sanitized_ollama_url()
+            base_url = safe_endpoint_for_log(config.sanitized_ollama_url())
         elif config.llm_provider == "lmstudio":
-            base_url = config.lmstudio_base_url
+            base_url = safe_endpoint_for_log(config.lmstudio_base_url)
         else:
-            base_url = config.llm_base_url or "unset"
+            base_url = safe_endpoint_for_log(config.llm_base_url)
 
         logger.info(
             "DeepResearch configuration loaded: provider=%s model=%s base_url=%s search_api=%s "
-            "max_loops=%s fetch_full_page=%s tool_calling=%s strip_thinking=%s api_key=%s",
+            "max_loops=%s fetch_full_page=%s tool_calling=%s strip_thinking=%s config_ready=%s",
             config.llm_provider,
             config.resolved_model() or "unset",
             base_url,
@@ -893,7 +887,7 @@ def create_app() -> FastAPI:
             config.fetch_full_page,
             config.use_tool_calling,
             config.strip_thinking_tokens,
-            _mask_secret(config.llm_api_key),
+            deployment_status.ready,
         )
 
         yield
@@ -906,6 +900,7 @@ def create_app() -> FastAPI:
     app.state.research_store = SQLiteResearchStore(
         config.research_db_path
     )
+    app.state.deployment_config_status = deployment_status
     app.state.execution_trace_service = ExecutionTraceService(
         lock=Lock(),
     )
@@ -960,6 +955,15 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def health_check() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readiness_check() -> JSONResponse:
+        """Report configuration readiness without probing providers."""
+        status = app.state.deployment_config_status
+        return JSONResponse(
+            status_code=200 if status.ready else 503,
+            content=status.as_dict(),
+        )
 
     @app.get(
         "/research/{research_id}/replay",

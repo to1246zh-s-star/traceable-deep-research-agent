@@ -270,15 +270,18 @@ The exact internal folders may differ depending on the current repository layout
 
 ## Getting Started
 
-### Prerequisites
+### Requirements
 
 Make sure the following software is available:
 
-* Python
-* Node.js and npm
+* Python 3.10+
+* [uv](https://docs.astral.sh/uv/)
+* Node.js 22+ and npm
 * Git
+* Docker with Compose support (optional)
 
-You will also need valid credentials for the configured model provider and Tavily Search.
+External credentials are needed only for the providers selected in the
+environment configuration.
 
 ---
 
@@ -290,60 +293,48 @@ Navigate to the backend directory:
 cd backend
 ```
 
-Create and activate a Python virtual environment:
+Install the locked backend dependencies:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+uv sync
 ```
 
-On Windows:
+Copy `backend/.env.example` to `backend/.env` and replace only the placeholders
+for providers you use. Important variables are:
 
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-```
+* LLM: `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL_ID`, `LLM_API_KEY`,
+  `LOCAL_LLM`, `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`;
+* search: `SEARCH_API`, `TAVILY_API_KEY`, `PERPLEXITY_API_KEY`,
+  `SEARXNG_URL`;
+* persistence: `RESEARCH_DB_PATH`, `NOTES_WORKSPACE`;
+* safe limits: `MAX_WEB_RESEARCH_LOOPS`,
+  `MAX_CONCURRENT_RESEARCH_TASKS`;
+* deployment ports: `BACKEND_PORT`, `FRONTEND_PORT`.
 
-Install the backend dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Create a `.env` file and add the environment variables required by your model provider and search provider.
-
-Example:
-
-```env
-MODEL_API_KEY=your_model_api_key
-MODEL_BASE_URL=your_model_base_url
-MODEL_NAME=your_model_name
-TAVILY_API_KEY=your_tavily_api_key
-```
-
-Use the actual variable names defined by the project implementation.
-
-Do not commit the `.env` file or any API keys to Git.
+`.env` files are ignored by Git. Startup logs include provider/model identifiers
+and sanitized endpoint origins, never API keys, URL credentials, or query data.
 
 Start the backend:
 
-```bash
-set -a
-source .env
-set +a
-
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY
-
-PYTHONPATH=src .venv/bin/uvicorn main:app \
-  --host 0.0.0.0 \
-  --port 8000
+```powershell
+$env:PYTHONPATH="src;."
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+This is the existing FastAPI entrypoint; deployment does not introduce a
+second application runtime.
 
 Check the backend health endpoint:
 
 ```bash
 curl -sS http://127.0.0.1:8000/healthz
 ```
+
+`/healthz` is process liveness and never contacts an external provider.
+`/readyz` deterministically reports whether configuration is coherent; it
+also performs no network calls. Provider preflight remains request-scoped and
+answers the separate question of whether a configured provider currently
+serves requests.
 
 ---
 
@@ -355,21 +346,10 @@ Navigate to the frontend directory:
 cd frontend
 ```
 
-Install the dependencies:
+Install dependencies and start Vite:
 
 ```bash
 npm install
-```
-
-Create `frontend/.env.local`:
-
-```env
-VITE_API_BASE_URL=/api
-```
-
-Start the development server:
-
-```bash
 npm run dev
 ```
 
@@ -381,9 +361,8 @@ Open:
 http://localhost:6006
 ```
 
-The Vite development server proxies frontend requests from `/api` to the FastAPI backend running on port `8000`.
-
-Do not set `VITE_API_BASE_URL` to `http://localhost:8000` when accessing the application through a remote deployment. In a browser, `localhost` refers to the user's own computer rather than the remote server.
+The frontend defaults to `/api`; Vite proxies that path to the backend during
+development. `VITE_API_BASE_URL` can override it at build time.
 
 ---
 
@@ -397,6 +376,34 @@ npm run build
 ```
 
 The generated files will be placed in the frontend build output directory.
+
+---
+
+## Docker Startup
+
+From the repository root, optionally create a root `.env` with provider
+credentials, then run:
+
+```bash
+docker compose up --build
+```
+
+The frontend is available at `http://localhost:6006`, the backend at
+`http://localhost:8000`, and liveness at
+`http://localhost:8000/healthz`. Nginx serves the static frontend and proxies
+`/api` to the existing FastAPI service. The backend connects directly to the
+configured external LLM and search providers.
+
+SQLite and notes live under `/data` in the backend container. Compose mounts
+the named `research-data` volume there, so research state, replay history, and
+lineage survive container replacement and restart.
+
+Common configuration failures are exposed by `/readyz`, including missing
+custom-provider settings, missing provider-specific search keys, and invalid
+database paths. Temporary provider outages do not make `/healthz` fail; they
+are handled at request time through preflight or existing runtime degradation
+where possible. Empty search results remain missing evidence, not negative
+evidence.
 
 ---
 

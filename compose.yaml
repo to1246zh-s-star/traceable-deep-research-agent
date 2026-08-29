@@ -1,0 +1,49 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL_ID: ${LLM_MODEL_ID:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LOCAL_LLM: ${LOCAL_LLM:-llama3.2}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      SEARCH_API: ${SEARCH_API:-duckduckgo}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      SEARXNG_URL: ${SEARXNG_URL:-http://host.docker.internal:8888}
+      RESEARCH_DB_PATH: /data/research.db
+      NOTES_WORKSPACE: /data/notes
+      MAX_WEB_RESEARCH_LOOPS: ${MAX_WEB_RESEARCH_LOOPS:-3}
+      MAX_CONCURRENT_RESEARCH_TASKS: ${MAX_CONCURRENT_RESEARCH_TASKS:-3}
+      FETCH_FULL_PAGE: ${FETCH_FULL_PAGE:-true}
+      STRIP_THINKING_TOKENS: ${STRIP_THINKING_TOKENS:-true}
+      USE_TOOL_CALLING: ${USE_TOOL_CALLING:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - research-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-6006}:80"
+
+volumes:
+  research-data:
