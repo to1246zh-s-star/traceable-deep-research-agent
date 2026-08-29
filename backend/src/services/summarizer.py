@@ -8,6 +8,13 @@ from typing import Tuple
 from hello_agents import ToolAwareSimpleAgent
 
 from models import SummaryState, TodoItem
+
+from services.context_engineering import (
+    ContextAssembler,
+)
+from services.summarizer_context import (
+    select_summarizer_context,
+)
 from config import Configuration
 from utils import strip_thinking_tokens
 from services.notes import build_note_guidance
@@ -136,15 +143,34 @@ class SummarizationService:
 
         return generator(), get_summary
 
-    def _build_prompt(self, state: SummaryState, task: TodoItem, context: str) -> str:
+    def _build_prompt(
+        self,
+        state: SummaryState,
+        task: TodoItem,
+        context: str,
+    ) -> str:
         """Construct the summarization prompt shared by both modes."""
 
-        return (
-            f"任务主题：{state.research_topic}\n"
-            f"任务名称：{task.title}\n"
-            f"任务目标：{task.intent}\n"
-            f"检索查询：{task.query}\n"
-            f"任务上下文：\n{context}\n"
-            f"{build_note_guidance(task)}\n"
-            "请按照以上协作要求先同步笔记，然后返回一份面向用户的 Markdown 总结（仍遵循任务总结模板）。"
+        context_selection = (
+            select_summarizer_context(
+                state,
+                task,
+                context,
+            )
         )
+
+        assembled_context = (
+            ContextAssembler().assemble(
+                context_selection
+            )
+        )
+
+        return (
+            f"{assembled_context.rendered_text}\n\n"
+            "SUMMARIZATION INSTRUCTION:\n"
+            f"{build_note_guidance(task)}\n"
+            "请按照以上协作要求先同步笔记，然后返回一份"
+            "面向用户的 Markdown 总结"
+            "（仍遵循任务总结模板）。"
+        )
+
