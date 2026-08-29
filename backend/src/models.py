@@ -1125,6 +1125,17 @@ class ContextBudgetTrace:
 
 
 @dataclass(kw_only=True)
+class ContextCompressionTrace:
+    """Sanitized observability for one execution-context compression."""
+
+    section_name: str = field(default="")
+    original_estimated_size: int = field(default=0)
+    compressed_estimated_size: int = field(default=0)
+    strategy: str = field(default="")
+    reason: str = field(default="")
+
+
+@dataclass(kw_only=True)
 class RuntimeEfficiency:
     """Run-level Agent efficiency observations.
 
@@ -1200,6 +1211,10 @@ class SummaryState:
     ] = field(
         default_factory=list
     )
+
+    context_compression_traces: list[
+        ContextCompressionTrace
+    ] = field(default_factory=list)
 
     runtime_efficiency: RuntimeEfficiency = field(
         default_factory=RuntimeEfficiency

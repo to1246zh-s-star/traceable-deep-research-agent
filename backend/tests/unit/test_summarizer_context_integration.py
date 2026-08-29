@@ -178,6 +178,26 @@ def test_summarizer_budget_keeps_critical_task_context_metadata():
         not in prompt
     )
 
+    assert "retrieved-content-" in prompt
+    assert "[... context compressed for execution ...]" in prompt
+    assert state.context_compression_traces
+    trace = state.context_compression_traces[-1]
+    assert trace.section_name == "Task Context"
+    assert trace.original_estimated_size > trace.compressed_estimated_size
+    assert trace.reason == "section_exceeds_remaining_budget"
+
+    budget_trace = state.context_budget_traces[-1]
+    decisions = {item.section_name: item for item in budget_trace.decisions}
+    task_context_decision = decisions["Task Context"]
+    higher_priority_units = (
+        decisions["Research Topic"].estimated_units
+        + decisions["Task"].estimated_units
+    )
+    assert task_context_decision.estimated_units <= (
+        budget_trace.available_units - higher_priority_units
+    )
+    assert task_context_decision.included is True
+
 
 def test_summarizer_budget_keeps_normal_context_when_it_fits():
     agent = RecordingAgent()
@@ -246,14 +266,10 @@ def test_summarizer_records_budget_trace():
         for item in trace.decisions
     }
 
-    assert (
-        decisions["Task Context"]
-        .included
-        is False
-    )
+    assert decisions["Task Context"].included is True
 
     assert (
         decisions["Task Context"]
         .reason
-        == "budget_exceeded"
+        == "within_budget"
     )

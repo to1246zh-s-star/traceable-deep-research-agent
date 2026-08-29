@@ -13,10 +13,14 @@ from services.context_engineering import (
     ContextAssembler,
     ContextBudget,
     ContextBudgetPlanner,
+    ContextCompressor,
     selection_from_budget_result,
 )
 from services.context_budget_trace import (
     record_context_budget_trace,
+)
+from services.context_compression_trace import (
+    record_context_compression_traces,
 )
 from services.summarizer_context import (
     select_summarizer_context,
@@ -25,10 +29,6 @@ from config import Configuration
 from utils import strip_thinking_tokens
 from services.notes import build_note_guidance
 from services.text_processing import strip_tool_calls
-
-
-SUMMARIZER_CONTEXT_MAX_UNITS = 12000
-SUMMARIZER_RESERVED_OUTPUT_UNITS = 2000
 
 
 SUMMARIZER_CONTEXT_MAX_UNITS = 12000
@@ -173,15 +173,25 @@ class SummarizationService:
             )
         )
 
+        context_budget = ContextBudget(
+            max_units=SUMMARIZER_CONTEXT_MAX_UNITS,
+            reserved_output_units=SUMMARIZER_RESERVED_OUTPUT_UNITS,
+        )
+
+        compression_result = ContextCompressor().compress_to_budget(
+            context_selection,
+            context_budget,
+        )
+
+        record_context_compression_traces(
+            state,
+            compression_result,
+        )
+
         budget_result = (
             ContextBudgetPlanner().apply(
-                context_selection,
-                ContextBudget(
-                    max_units=
-                        SUMMARIZER_CONTEXT_MAX_UNITS,
-                    reserved_output_units=
-                        SUMMARIZER_RESERVED_OUTPUT_UNITS,
-                ),
+                compression_result.selection,
+                context_budget,
             )
         )
 
