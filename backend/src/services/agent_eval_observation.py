@@ -336,12 +336,39 @@ def build_eval_observation(
                 state
             )
         ),
-        # Do not interpret summed task/tool durations as wall-clock latency.
-        latency_ms=None,
-        # Token usage and cost are added only when explicit accounting
-        # exists in the runtime.
-        token_usage=None,
-        estimated_cost=None,
+        latency_ms=(
+            getattr(
+                getattr(
+                    state,
+                    "runtime_efficiency",
+                    None,
+                ),
+                "latency_ms",
+                None,
+            )
+        ),
+        token_usage=(
+            getattr(
+                getattr(
+                    state,
+                    "runtime_efficiency",
+                    None,
+                ),
+                "total_tokens",
+                None,
+            )
+        ),
+        estimated_cost=(
+            getattr(
+                getattr(
+                    state,
+                    "runtime_efficiency",
+                    None,
+                ),
+                "estimated_cost",
+                None,
+            )
+        ),
         metadata={
             "observation_source":
                 "summary_state",

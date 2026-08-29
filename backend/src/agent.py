@@ -75,6 +75,10 @@ from services.incremental_semantic_signals import (
 )
 from services.reporter import ReportingService
 from services.search import dispatch_search, extract_evidence, prepare_research_context
+from services.runtime_efficiency import (
+    finish_run_timer,
+    start_run_timer,
+)
 from services.tool_runtime import (
     TOOL_SUCCESS,
     ToolDefinition,
@@ -948,6 +952,7 @@ class DeepResearchAgent:
     def run(self, topic: str) -> SummaryStateOutput:
         """Execute the research workflow and return the final report."""
         state = SummaryState(research_topic=topic)
+        run_started_counter = start_run_timer()
         self._last_state = state
         self._attach_decision_case(state)
         state.todo_items = self.planner.plan_todo_list(state)
@@ -985,6 +990,12 @@ class DeepResearchAgent:
         self._drain_tool_events(state)
         state.structured_report = report
         state.running_summary = report
+
+        finish_run_timer(
+            state,
+            started_counter=run_started_counter,
+        )
+
         self._persist_final_report(state, report)
 
         return SummaryStateOutput(
@@ -996,6 +1007,7 @@ class DeepResearchAgent:
     def run_stream(self, topic: str) -> Iterator[dict[str, Any]]:
         """Execute the workflow yielding incremental progress events."""
         state = SummaryState(research_topic=topic)
+        run_started_counter = start_run_timer()
         self._last_state = state
         self._attach_decision_case(state)
         logger.debug("Starting streaming research: topic=%s", topic)
@@ -1146,6 +1158,11 @@ class DeepResearchAgent:
             yield event
         state.structured_report = report
         state.running_summary = report
+
+        finish_run_timer(
+            state,
+            started_counter=run_started_counter,
+        )
 
         note_event = self._persist_final_report(state, report)
         if note_event:

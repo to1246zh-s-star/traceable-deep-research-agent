@@ -1091,6 +1091,47 @@ class ResearchLineage:
 
 
 @dataclass(kw_only=True)
+class RuntimeEfficiency:
+    """Run-level Agent efficiency observations.
+
+    These fields are runtime observability only and must never participate
+    in candidate scoring, readiness, recommendation, or stopping truth.
+    """
+
+    latency_ms: float | None = field(
+        default=None
+    )
+
+    llm_call_count: int = field(
+        default=0
+    )
+
+    prompt_tokens: int | None = field(
+        default=None
+    )
+
+    completion_tokens: int | None = field(
+        default=None
+    )
+
+    total_tokens: int | None = field(
+        default=None
+    )
+
+    estimated_cost: float | None = field(
+        default=None
+    )
+
+    cost_currency: str | None = field(
+        default=None
+    )
+
+    cost_basis: str | None = field(
+        default=None
+    )
+
+
+@dataclass(kw_only=True)
 class SummaryState:
     research_topic: str = field(default=None)  # Report topic
     search_query: str = field(default=None)  # Deprecated placeholder
@@ -1112,6 +1153,12 @@ class SummaryState:
     # business inputs for decision scoring or readiness.
     tool_execution_traces: list[dict[str, Any]] = field(
         default_factory=list
+    )
+
+    # Run-level efficiency observability only. It must never participate
+    # in candidate scoring, readiness, recommendation, or stopping truth.
+    runtime_efficiency: RuntimeEfficiency = field(
+        default_factory=RuntimeEfficiency
     )
 
     # Per-run LLM circuit. Observability/orchestration state only;

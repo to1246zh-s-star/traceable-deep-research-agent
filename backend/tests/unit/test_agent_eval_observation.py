@@ -433,3 +433,26 @@ def test_observation_contains_no_decision_truth_fields():
         forbidden
         & set(vars(observation))
     )
+
+
+def test_observation_reads_runtime_latency():
+    state = SummaryState()
+
+    state.runtime_efficiency.latency_ms = 987.25
+
+    observation = build_eval_observation(
+        state
+    )
+
+    assert observation.latency_ms == 987.25
+
+
+def test_observation_preserves_unknown_usage_and_cost():
+    state = SummaryState()
+
+    observation = build_eval_observation(
+        state
+    )
+
+    assert observation.token_usage is None
+    assert observation.estimated_cost is None
