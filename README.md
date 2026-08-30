@@ -1,750 +1,317 @@
-# Evidence-Aware Deep Research Agent
-
-A traceable multi-agent research application that plans research tasks, searches the web, evaluates source quality, summarizes findings, and generates a structured research report with real-time progress streaming.
-
-The project is designed as the first working version of a broader **Evidence-Aware Adaptive Deep Research Agent**. The current V1 focuses on building a reliable end-to-end research workflow with transparent intermediate states, source tracking, concurrent task execution, and a web-based user interface.
-
----
-
-## Overview
-
-Traditional research assistants often hide the process between receiving a question and producing an answer. This project makes the research workflow observable.
-
-Given a research topic, the system:
-
-1. generates a set of focused research tasks;
-2. creates search queries for each task;
-3. retrieves information from the web;
-4. classifies the quality of each source;
-5. generates a summary for every research task;
-6. stores intermediate notes;
-7. combines the findings into a final report;
-8. streams the entire process to the frontend in real time.
-
-```text
-Research Topic
-    ↓
-Task Planning
-    ↓
-Concurrent Web Research
-    ↓
-Source Classification
-    ↓
-Task Summarization
-    ↓
-Intermediate Notes
-    ↓
-Final Report
-```
-
----
-
-## Key Features
-
-### Multi-Agent Research Workflow
-
-The backend currently contains three main agent roles:
-
-* **TODO Planner** — decomposes a research topic into a limited set of complementary tasks.
-* **Task Summarizer** — summarizes the evidence collected for each task.
-* **Report Writer** — combines task-level findings into a final structured report.
-
-### Real-Time Research Progress
-
-The backend streams research events to the frontend using Server-Sent Events over a POST fetch stream.
-
-The interface can display:
-
-* current research status;
-* generated TODO items;
-* task progress;
-* active research task;
-* retrieved sources;
-* source quality tiers;
-* tool-call records;
-* task-level summaries;
-* final research report;
-* error and completion states.
-
-### Concurrent Research Workers
-
-Independent research tasks can run concurrently.
-
-A semaphore currently limits execution to a maximum of two research workers at the same time:
-
-```python
-Semaphore(2)
-```
-
-This reduces burst concurrency and lowers the risk of temporary provider rate limits.
-
-### Source Quality Classification
-
-Retrieved sources are assigned deterministic quality tiers.
-
-Examples of the current rules include:
-
-| Source type                                             |   Tier |
-| ------------------------------------------------------- | -----: |
-| Official project websites                               | Tier 1 |
-| Official papers and technical reports                   | Tier 1 |
-| Official organization GitHub repositories               | Tier 1 |
-| General authoritative technical sources                 | Tier 2 |
-| Unverified repositories, blogs, forums, and aggregators | Tier 3 |
-
-Source tiers are passed into the task summarization context and included in the final source representation.
-
-### Safe Markdown Rendering
-
-Task summaries and final reports support Markdown rendering in the frontend.
-
-The rendering pipeline is:
-
-```text
-LLM Markdown
-    ↓
-marked
-    ↓
-DOMPurify
-    ↓
-Safe HTML Rendering
-```
-
-This allows readable reports while reducing the risk of rendering unsafe generated HTML.
-
-### Observable Tool Calls
-
-Tool-call events are displayed in collapsible sections.
-
-The collapsed view shows:
-
-* event ID;
-* agent name;
-* tool name;
-* note ID.
-
-The expanded view shows:
-
-* tool arguments;
-* execution result;
-* note path.
-
-This preserves debugging information without overwhelming the main interface.
-
-### Robust Streaming Parser
-
-The frontend streaming parser handles:
-
-* POST-based fetch streaming;
-* CRLF normalization;
-* partial network chunks;
-* buffered event blocks;
-* multiple `data:` lines;
-* multiple events in one network chunk;
-* incomplete trailing events;
-* explicit `done` and `error` events.
-
-### Output Validation and Fallbacks
-
-Task summaries are checked before being accepted.
-
-The current validation process includes:
-
-* empty-output detection;
-* minimum-length validation;
-* internal tool-protocol residue detection;
-* one automatic retry;
-* a final fallback response.
-
-The backend also includes a balanced scanner for removing leaked tool-call structures. It supports nested objects, arrays, quoted brackets, and escaped characters.
-
----
-
-## System Architecture
-
-```text
-User
-  │
-  ▼
-Vue 3 Frontend
-  │
-  │  POST /api/research/stream
-  ▼
-Vite Development Proxy
-  │
-  │  /api → 127.0.0.1:8000
-  ▼
-FastAPI Backend
-  │
-  ▼
-DeepResearchAgent
-  │
-  ├── TODO Planner
-  │     └── Generates focused research tasks
-  │
-  ├── Research Workers
-  │     ├── Generate search queries
-  │     ├── Call Tavily Search
-  │     ├── Classify source quality
-  │     ├── Generate task summaries
-  │     └── Save intermediate notes
-  │
-  ├── Report Writer
-  │     └── Produces the final report
-  │
-  └── SSE Event Stream
-        ├── status
-        ├── todo_list
-        ├── task_started
-        ├── source
-        ├── tool_call
-        ├── task_summary
-        ├── report
-        ├── error
-        └── done
-```
-
----
-
-## Technology Stack
-
-### Backend
-
-* Python
-* FastAPI
-* Uvicorn
-* HelloAgents
-* OpenAI-compatible model API
-* Qwen
-* ModelScope
-* Tavily Search
-
-### Frontend
-
-* Vue 3
-* TypeScript
-* Vite
-* Fetch Streaming
-* Server-Sent Events
-* marked
-* DOMPurify
-
-### Development and Deployment
-
-* tmux
-* AutoDL
-* SeetaCloud
-* Vite development proxy
-
----
-
-## Project Structure
-
-```text
-traceable-deep-research-agent/
-├── backend/
-│   ├── src/
-│   │   ├── agents/
-│   │   ├── tools/
-│   │   ├── services/
-│   │   └── ...
-│   ├── main.py
-│   ├── .env
-│   └── .venv/
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── services/
-│   │   └── ...
-│   ├── vite.config.ts
-│   ├── package.json
-│   └── .env.local
-│
-└── README.md
-```
-
-The exact internal folders may differ depending on the current repository layout.
-
----
-
-## Getting Started
-
-### Requirements
-
-Make sure the following software is available:
-
-* Python 3.10+
-* [uv](https://docs.astral.sh/uv/)
-* Node.js 22+ and npm
-* Git
-* Docker with Compose support (optional)
-
-External credentials are needed only for the providers selected in the
-environment configuration.
-
----
-
-## Backend Setup
-
-Navigate to the backend directory:
-
-```bash
-cd backend
-```
-
-Install the locked backend dependencies:
-
-```bash
-uv sync
-```
-
-Copy `backend/.env.example` to `backend/.env` and replace only the placeholders
-for providers you use. Important variables are:
-
-* LLM: `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL_ID`, `LLM_API_KEY`,
-  `LOCAL_LLM`, `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`;
-* search: `SEARCH_API`, `TAVILY_API_KEY`, `PERPLEXITY_API_KEY`,
-  `SEARXNG_URL`;
-* persistence: `RESEARCH_DB_PATH`, `NOTES_WORKSPACE`;
-* safe limits: `MAX_WEB_RESEARCH_LOOPS`,
-  `MAX_CONCURRENT_RESEARCH_TASKS`;
-* deployment ports: `BACKEND_PORT`, `FRONTEND_PORT`.
-
-`.env` files are ignored by Git. Startup logs include provider/model identifiers
-and sanitized endpoint origins, never API keys, URL credentials, or query data.
-
-Start the backend:
+# Traceable Technical Research & Decision Agent
+
+A production-oriented AI Agent for complex technical research and architecture
+decisions. It decomposes a question, executes external tools, builds explicit
+evidence and claim state, detects research gaps, adapts within deterministic
+budgets, and persists the complete run for replay and versioned re-evaluation.
+
+This is not just a chatbot around an LLM. The model is one component inside an
+orchestrated system with persistent state, tool boundaries, stopping rules,
+fault isolation, context engineering, evaluation, and operational telemetry.
+The production source of truth is a custom runtime; an optional LangGraph layer
+demonstrates framework compatibility without duplicating business state.
+
+## Quick Start
 
 ```powershell
+# Backend (PowerShell)
+cd backend
+uv sync
 $env:PYTHONPATH="src;."
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-This is the existing FastAPI entrypoint; deployment does not introduce a
-second application runtime.
-
-Check the backend health endpoint:
-
 ```bash
-curl -sS http://127.0.0.1:8000/healthz
-```
-
-`/healthz` is process liveness and never contacts an external provider.
-`/readyz` deterministically reports whether configuration is coherent; it
-also performs no network calls. Provider preflight remains request-scoped and
-answers the separate question of whether a configured provider currently
-serves requests.
-
----
-
-## Frontend Setup
-
-Navigate to the frontend directory:
-
-```bash
+# Frontend (second terminal)
 cd frontend
-```
-
-Install dependencies and start Vite:
-
-```bash
 npm install
 npm run dev
 ```
 
-The frontend is configured to run on port `6006`.
-
-Open:
-
-```text
-http://localhost:6006
-```
-
-The frontend defaults to `/api`; Vite proxies that path to the backend during
-development. `VITE_API_BASE_URL` can override it at build time.
-
----
-
-## Production Build
-
-Create a frontend production build with:
+Open `http://localhost:6006`. Copy `backend/.env.example` to
+`backend/.env` and replace only the placeholders needed by the selected LLM
+and search providers.
 
 ```bash
-cd frontend
-npm run build
-```
-
-The generated files will be placed in the frontend build output directory.
-
----
-
-## Docker Startup
-
-From the repository root, optionally create a root `.env` with provider
-credentials, then run:
-
-```bash
+# Containerized demo from the repository root
 docker compose up --build
 ```
 
-The frontend is available at `http://localhost:6006`, the backend at
-`http://localhost:8000`, and liveness at
-`http://localhost:8000/healthz`. Nginx serves the static frontend and proxies
-`/api` to the existing FastAPI service. The backend connects directly to the
-configured external LLM and search providers.
+- Liveness: `GET http://localhost:8000/healthz`
+- Configuration readiness: `GET http://localhost:8000/readyz`
 
-SQLite and notes live under `/data` in the backend container. Compose mounts
-the named `research-data` volume there, so research state, replay history, and
-lineage survive container replacement and restart.
+## What This Demonstrates
 
-Common configuration failures are exposed by `/readyz`, including missing
-custom-provider settings, missing provider-specific search keys, and invalid
-database paths. Temporary provider outages do not make `/healthz` fail; they
-are handled at request time through preflight or existing runtime degradation
-where possible. Empty search results remain missing evidence, not negative
-evidence.
+| Project capability | Mainstream Agent engineering concept |
+|---|---|
+| Research planner | Planning and task decomposition |
+| Unified tool runtime | Tool calling, MCP, external integration |
+| `SummaryState` | Persistent Agent state |
+| Adaptive research | Dynamic planning and bounded Agent loop |
+| `ResearchBudget` and stopping decision | Execution budgets and deterministic routing |
+| `ExecutionTrace` and runtime events | Observability and lifecycle tracing |
+| LLM runtime circuit | Fault tolerance and graceful degradation |
+| Replay and lineage | Debugging and auditability |
+| Re-evaluation | Long-running, immutable, versioned Agent state |
+| Context assembly, budgeting, compression | Context engineering |
+| Evaluation harness | Deterministic Agent evaluation and regression checks |
+| LangGraph adapter | Framework interoperability |
+| Docker, Compose, health/readiness | Production deployment |
 
----
+## Architecture
 
-## API
+```mermaid
+flowchart TD
+    U[User request] --> P[Planner]
+    P --> T[Research tasks]
+    T --> R[Unified tool runtime]
+    R --> W[Web search]
+    R --> M[MCP tools]
+    R --> L[Local tools]
+    W --> S[Evidence, claims, SummaryState]
+    M --> S
+    L --> S
+    S --> A{Adaptive research check}
+    A -->|actionable gaps and budget| T
+    A -->|stop| D[Technical decision layer]
+    D --> O[Evidence-grounded report]
 
-### Health Check
-
-```http
-GET /healthz
+    C[Context engineering] -.-> P
+    C -.-> T
+    C -.-> O
+    X[Fault tolerance and runtime observability] -.-> R
+    X -.-> A
+    Q[SQLite persistence, replay, lineage] -.-> S
+    E[Evaluation harness] -.-> P
+    E -.-> R
+    E -.-> O
 ```
 
-Example response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Start Research Stream
-
-```http
-POST /research/stream
-```
-
-The frontend accesses this endpoint through:
-
-```http
-POST /api/research/stream
-```
-
-The response is a stream of SSE-formatted research events.
-
-Example event types:
-
-```text
-status
-todo_list
-task_started
-source
-tool_call
-task_summary
-report
-error
-done
-```
-
-The exact request and event payload schemas should be checked in the backend and frontend source code.
-
----
-
-## Example Workflow
-
-A user submits a topic such as:
-
-```text
-Research the architecture and main technical characteristics of Qwen3.
-```
-
-The system may generate tasks such as:
-
-```text
-1. Identify the official release information.
-2. Investigate the model family and parameter configurations.
-3. Compare Dense and Mixture-of-Experts architectures.
-4. Examine thinking and non-thinking inference modes.
-5. Summarize the main changes from the previous generation.
-```
-
-Each worker then:
-
-1. generates a search query;
-2. retrieves relevant sources;
-3. assigns source tiers;
-4. summarizes the findings;
-5. stores an intermediate note.
-
-The Report Writer combines the completed task summaries into the final report.
-
----
-
-## Reliability Improvements Included in V1
-
-The current version already includes several reliability improvements:
-
-* correct consumption of generator-based non-streaming execution;
-* deterministic source-tier classification;
-* buffered and size-limited SSE summary chunks;
-* bounded task concurrency;
-* balanced removal of leaked tool-call content;
-* task-summary validation and retry;
-* safe Markdown rendering;
-* robust frontend stream parsing;
-* structured error events;
-* frontend completion and failure states.
-
----
-
-## Current Limitations
-
-V1 establishes the basic research workflow, but it is not yet a fully evidence-verified research system.
-
-Current limitations include:
-
-* research tasks are generated only at the beginning of a run;
-* the system does not dynamically create new tasks from detected knowledge gaps;
-* reports are mainly generated from task summaries rather than atomic verified claims;
-* citations are not yet validated at the claim level;
-* URL availability does not guarantee that a source supports a nearby statement;
-* local PDF and private-document retrieval are not yet implemented;
-* research state is not yet fully recoverable after every interruption;
-* model and search provider quotas can stop a research run;
-* source-quality rules are deterministic but currently limited;
-* the application does not yet provide a complete offline evaluation framework.
-
-A model provider quota error may occur before task generation begins. This is an external API limitation rather than a frontend, proxy, SSE, or application-rendering failure.
-
----
-
-## Roadmap
-
-### Phase 1 — Reliability
-
-* robust JSON parsing and repair;
-* search retry and provider fallback;
-* empty-result recovery;
-* URL normalization and deduplication;
-* structured runtime metrics;
-* persistent research state;
-* checkpoint recovery;
-* task-level retries;
-* improved cancellation and timeout handling;
-* offline baseline evaluation.
-
-### Phase 2 — Evidence-Aware Research
-
-* Research Brief;
-* unified evidence model;
-* Claim–Evidence Ledger;
-* claim extraction;
-* Citation Validator;
-* Coverage Evaluator;
-* knowledge-gap detection;
-* dynamic research tasks;
-* Budget Manager.
-
-The planned research loop is:
-
-```text
-Research Brief
-    ↓
-Initial Tasks
-    ↓
-Budget-Constrained Retrieval
-    ↓
-Claim–Evidence Ledger
-    ↓
-Citation Validation
-    ↓
-Coverage Evaluation
-    ↓
-Knowledge-Gap Detection
-    ↓
-Dynamic Tasks
-    ↓
-Final Report
-```
-
-### Phase 3 — Hybrid Retrieval and Extensibility
-
-* local-document ingestion;
-* PDF parsing with page and section metadata;
-* keyword and vector retrieval;
-* hybrid reranking;
-* web and local evidence fusion;
-* MCP tool adapters;
-* human-in-the-loop review modes;
-* evidence-derived knowledge graphs;
-* report export and research history.
-
----
-
-## Planned Evaluation
-
-Future versions will be evaluated using more than visual report quality.
-
-Planned evaluation areas include:
-
-* end-to-end completion rate;
-* planner JSON validity;
-* task coverage;
-* search success rate;
-* evidence precision and recall;
-* source authority ratio;
-* citation precision;
-* citation coverage;
-* unsupported claim rate;
-* knowledge-gap detection;
-* dynamic-task utility;
-* budget compliance;
-* SSE event completeness;
-* recovery success rate;
-* latency, token usage, and estimated cost.
-
-No performance or accuracy improvements should be claimed until they have been measured on a reproducible evaluation set.
-
----
-
-## Security Considerations
-
-External content must be treated as untrusted data.
-
-This includes:
-
-* web pages;
-* search results;
-* uploaded documents;
-* tool outputs;
-* future MCP resources.
-
-The system should never allow retrieved content to override system instructions, expose API keys, or independently authorize sensitive tool calls.
-
-API credentials must remain in environment variables and must never be committed to the repository.
-
-Recommended `.gitignore` entries include:
-
-```gitignore
-.env
-.env.*
-!.env.example
-
-.venv/
-__pycache__/
-*.py[cod]
-
-node_modules/
-dist/
-
-.DS_Store
-.vscode/
-.idea/
-```
-
----
-
-## Screenshots
-
-Add screenshots or a demo GIF here after uploading them to the repository.
-
-```markdown
-![Research interface](docs/images/research-interface.png)
-
-![Streaming research process](docs/images/research-stream.gif)
-```
-
----
-
-## Future Project Positioning
-
-### LangGraph compatibility
-
-The production Agent uses a custom orchestration runtime because this project
-was built to explore orchestration mechanics directly. That runtime already
-owns persistent `SummaryState`, tool execution, context budgets, deterministic
-stopping, replay/version history, resilience, evaluation, and technical
-decision semantics.
-
-Phase 47 adds an optional, thin LangGraph adapter rather than rewriting those
-responsibilities. The mapping is direct: `SummaryState` is referenced by a
-thin graph state; planning, research, decision enrichment, and reporting are
-nodes; the existing stopping decision controls a conditional edge; and the
-existing research store is the checkpoint-compatible persistence boundary.
-The unified tool runtime remains responsible for external tool execution.
-
-This compatibility is useful for teams that already use LangGraph and makes
-the architecture easy to discuss in terms of State, Nodes, Conditional Edges,
-and Checkpoints. It is an interoperability option, not a claim that custom
-orchestration is universally preferable. LangGraph remains optional:
+There is no fake multi-agent hierarchy here. `DeepResearchAgent` coordinates
+specialized planning, summarization, decision-enrichment, and reporting
+services around one authoritative `SummaryState`.
+
+## Agent Lifecycle
+
+1. Interpret the research or technical decision request.
+2. Extract decision candidates, criteria, requirements, and constraints when
+   the request represents a technical choice.
+3. Generate focused research tasks.
+4. Execute search, MCP, or local tools through the unified tool runtime.
+5. Normalize observations into explicit evidence, claims, and provenance.
+6. Assess coverage, unresolved constraints, evidence quality, and research
+   gaps without converting missing evidence into a negative score.
+7. Continue adaptive research only while deterministic stopping and budget
+   rules permit it.
+8. Build comparison, readiness, sensitivity, assumptions, and recommendation
+   state using conservative decision semantics.
+9. Generate the final report from selected, budgeted execution context.
+10. Persist state, traces, lineage, and observability for replay and future
+    re-evaluation.
+
+Tool output is an observation, not automatically decision truth. Evidence must
+pass through explicit normalization and assessment boundaries before it can
+support a decision.
+
+## Canonical Interview Demo
+
+Use one realistic architecture question:
+
+> We are designing a multi-tenant B2B SaaS platform. Choose PostgreSQL or
+> MongoDB for the primary transactional store. We need strong tenant
+> isolation, auditable financial updates, evolving customer-defined metadata,
+> a small operations team, and deployment on managed cloud services. Compare
+> both options, identify unresolved constraints, and make only the strongest
+> recommendation supported by evidence.
+
+This scenario naturally exercises planning, provider-backed retrieval,
+candidate/criterion extraction, hard constraints, evidence provenance,
+adaptive gap research, decision readiness, replay, and versioned
+re-evaluation. During the demo, show:
+
+1. generated research tasks and streaming tool events;
+2. evidence and claims with source provenance;
+3. research gaps and the adaptive stopping reason;
+4. the decision artifact and whether the recommendation is definitive or
+   provisional;
+5. `/research/{research_id}/replay`, lineage, and a re-evaluation triggered by
+   a new observed fact.
+
+Expected artifacts include persisted `SummaryState`, evidence items, claims,
+execution and tool traces, decision comparison/readiness, research gaps,
+stopping explanation, report Markdown, runtime efficiency, and lineage.
+
+See [docs/interview_demo.md](docs/interview_demo.md) for a 3–5 minute walkthrough
+and concise answers to common interview questions.
+
+## Design Principles
+
+- The LLM is a component, not the final decision system.
+- Tool results are observations, not truth.
+- No evidence does not imply a bad score.
+- `UNKNOWN` remains unknown; unresolved constraints are not false.
+- Observability never becomes business truth.
+- Context compression affects execution context and never mutates evidence.
+- Historical decision versions remain immutable.
+- Framework adapters reference, rather than replace, authoritative state.
+- Provider failures degrade the affected operation where possible; they do not
+  redefine process liveness or decision semantics.
+
+## Persistence, Replay, and Re-evaluation
+
+SQLite stores the authoritative `SummaryState`, evidence, claims, execution
+history, decision state, sanitized traces, and lineage. Replay reconstructs an
+inspectable run without rerunning providers. Re-evaluation deep-copies a
+historical state and, when eligible work occurs, persists a new child version;
+the historical version remains unchanged.
+
+In Docker, `/data/research.db` and notes live on the named `research-data`
+volume so state survives container replacement.
+
+## Context, Reliability, and Observability
+
+The context pipeline selects explicit sections, applies a deterministic input
+budget, and boundary-aware compression before LLM execution. Compression is
+observable and execution-only; persisted evidence is never replaced by its
+compressed representation.
+
+The runtime isolates tool failures, records sanitized traces, and opens a
+per-run LLM circuit after provider failure so optional downstream enrichment
+can degrade without inventing results. Run latency is one monotonic wall-clock
+measurement, including correct parallel-task behavior.
+
+Token usage comes only from provider metadata. Cost is calculated only when
+usage is complete, provider/model identity is known, and an exact trusted
+pricing rule is explicitly configured. Otherwise cost stays unknown.
+
+## Evaluation and Quality
+
+The deterministic evaluation harness measures completion, planning validity,
+coverage, evidence/citation quality, unsupported claims, recovery behavior,
+budget compliance, latency, token usage, and cost when known. Regression logic
+preserves `UNKNOWN` instead of treating unavailable metrics as failures.
+
+Current validation snapshot:
+
+- 1,100+ backend unit tests;
+- frontend TypeScript and Vite production build passing;
+- deterministic deployment/configuration tests passing;
+- Compose configuration included; Docker CLI was not available for the most
+  recent local image build validation.
+
+No accuracy or performance superiority over general-purpose research products
+is claimed without comparative evaluation.
+
+## LangGraph Compatibility
+
+The custom runtime was implemented to explore orchestration mechanics and
+already owns state, tools, budgets, stopping, replay, resilience, evaluation,
+and decision semantics. The optional adapter maps these boundaries to
+LangGraph State, Nodes, Conditional Edges, and Checkpoint concepts. It does not
+create a second decision model or replace the production runtime.
 
 ```bash
+cd backend
 uv sync --extra langgraph
-python -m services.langgraph_demo
+PYTHONPATH=src uv run python -m services.langgraph_demo
 ```
 
-### Cost and latency observability
+## Configuration and Operations
 
-LLM call counts and token usage are collected from provider response metadata
-at the provider boundary; token counts are never inferred from prompt length.
-Run latency is measured once around the whole orchestration with a monotonic
-wall-clock timer, so concurrent task durations are not added together.
+Requirements:
 
-Cost remains unknown unless every provider call reports usage, the provider
-and model are known, and an exact trusted pricing rule is supplied through
-`LLM_PRICING_RULES_JSON`. Rules specify provider, model, input/output prices,
-currency, and pricing basis. The application includes no assumed public price
-table: missing or incomplete inputs leave `estimated_cost` as `None`.
+- Python 3.10+ and `uv`;
+- Node.js 22+ and npm;
+- provider credentials for the selected integrations;
+- Docker with Compose support only for the containerized path.
 
-The long-term goal of this repository is to become:
+Important environment variables are documented safely in
+`backend/.env.example`:
 
-> A traceable, evidence-aware, and adaptive deep research agent with budget-aware planning, claim–evidence alignment, citation validation, and hybrid retrieval.
+- LLM: `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL_ID`, `LLM_API_KEY`;
+- search: `SEARCH_API`, `TAVILY_API_KEY`, `PERPLEXITY_API_KEY`;
+- persistence: `RESEARCH_DB_PATH`, `NOTES_WORKSPACE`;
+- runtime: `MAX_WEB_RESEARCH_LOOPS`, `MAX_CONCURRENT_RESEARCH_TASKS`;
+- optional cost rules: `LLM_PRICING_RULES_JSON`;
+- deployment: `BACKEND_PORT`, `FRONTEND_PORT`, `VITE_API_BASE_URL`.
 
-The core objective is not to combine as many agent technologies as possible. It is to build a research process in which important conclusions can be inspected, evaluated, and traced back to supporting evidence.
+`.env` files, local databases, virtual environments, dependency directories,
+and build caches are excluded from Git/container contexts. Startup logs include
+safe provider/model metadata and sanitized endpoint origins, never credentials.
 
----
+`/healthz` means the application process is alive and never calls an external
+provider. `/readyz` checks configuration shape without network access. Live
+LLM preflight remains request-scoped, so temporary external outages do not
+make the process itself unhealthy.
 
-## Contributing
+### Common failure modes
 
-Contributions, bug reports, and implementation suggestions are welcome.
+- `/readyz` returns `503`: required configuration names are listed without
+  echoing their values.
+- A research request returns provider `503`: configuration is coherent, but
+  request-scoped LLM preflight could not reach the provider.
+- Search returns no results: the run records missing evidence/degradation; it
+  does not infer a negative decision signal.
+- Data disappears after a container is replaced: verify that the Compose
+  `research-data` volume is mounted at `/data`.
 
-Before submitting a pull request:
+## API Highlights
 
-1. create a dedicated branch;
-2. keep changes focused on one logical problem;
-3. add or update relevant tests;
-4. verify the frontend build;
-5. verify the backend health endpoint;
-6. ensure that no secrets are included.
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | Process liveness |
+| `GET /readyz` | Non-network configuration readiness |
+| `POST /research/stream` | Start research with SSE progress |
+| `GET /research/{id}/replay` | Inspect persisted tasks, evidence, decisions, traces |
+| `GET /research/{id}/lineage` | Inspect immutable provenance |
+| `GET /research/{id}/versions` | List a version chain |
+| `GET /research/{id}/evolution` | Inspect decision evolution |
+| `POST /research/{id}/reevaluate` | Prepare/execute versioned re-evaluation |
 
----
-
-## License
-
-Add the selected open-source license to the repository and update this section accordingly.
-
-For example:
+## Repository Structure
 
 ```text
-MIT License
+backend/
+  src/
+    agent.py                 # production orchestrator
+    main.py                  # existing FastAPI entrypoint
+    models.py                # authoritative state and decision models
+    services/                # tools, retrieval, decisions, replay, evaluation
+  tests/unit/
+  Dockerfile
+
+frontend/
+  src/                       # Vue 3 + TypeScript UI
+  Dockerfile
+  nginx.conf
+
+docs/
+  interview_demo.md
+
+compose.yaml
+README.md
 ```
 
----
+## Technology
 
-## Acknowledgements
+Python, FastAPI, Uvicorn, SQLite, HelloAgents, OpenAI-compatible providers,
+Tavily/DuckDuckGo/SearxNG integration, MCP compatibility, Vue 3, TypeScript,
+Vite, nginx, Docker Compose, and optional LangGraph.
 
-This project uses open-source tools and external services including:
+## Security Notes
 
-* FastAPI
-* Vue.js
-* Vite
-* marked
-* DOMPurify
-* Tavily
-* Qwen
-* ModelScope
+External content is untrusted data. Retrieved text cannot authorize tool calls,
+override system instructions, or expose credentials. Secrets stay in
+environment variables and are excluded from persistence, sanitized runtime
+traces, logs, and Git.
+
+## Visual Assets
+
+No screenshots are currently committed. A future demo capture should show the
+streaming task view, evidence/replay view, and decision artifact; their absence
+does not block the documented demo workflow.
+
+## License and Acknowledgements
+
+The repository is distributed under its selected project license and builds on
+FastAPI, Vue, Vite, HelloAgents, and the configured external providers.
