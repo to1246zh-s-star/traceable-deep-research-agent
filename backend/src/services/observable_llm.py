@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Iterator
 from threading import Lock
 from typing import Any
 
 from hello_agents import HelloAgentsLLM
 from hello_agents.core.exceptions import HelloAgentsException
+
+logger = logging.getLogger(__name__)
+
+
+class _MalformedProviderResponse(Exception):
+    """Indicate a completed provider call without usable message content."""
 
 
 class LLMUsageCollector:
@@ -152,10 +160,13 @@ class ObservableHelloAgentsLLM(
         **kwargs: Any,
     ) -> str:
         """Non-streaming call with exact provider usage capture."""
+        max_retries = 2
 
-        try:
-            response = (
-                self._client.chat.completions.create(
+        for attempt in range(max_retries + 1):
+            response = None
+
+            try:
+                response = self._client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     temperature=kwargs.get(
@@ -176,31 +187,58 @@ class ObservableHelloAgentsLLM(
                         }
                     },
                 )
-            )
 
-            self.usage_collector.record_call(
-                getattr(
-                    response,
-                    "usage",
-                    None,
+                choices = getattr(response, "choices", None)
+                if not choices:
+                    raise _MalformedProviderResponse(
+                        "provider response has no choices"
+                    )
+
+                first_choice = choices[0]
+                message = getattr(first_choice, "message", None)
+                content = getattr(message, "content", None)
+                if first_choice is None or message is None or content is None:
+                    raise _MalformedProviderResponse(
+                        "provider response has no message content"
+                    )
+
+                self.usage_collector.record_call(
+                    getattr(response, "usage", None)
                 )
-            )
+                return content
 
-            return (
-                response
-                .choices[0]
-                .message
-                .content
-            )
+            except _MalformedProviderResponse as exc:
+                # Count each outbound attempt once. Preserve provider usage
+                # only when the response supplied it.
+                self.usage_collector.record_call(
+                    getattr(response, "usage", None)
+                )
 
-        except Exception as exc:
-            # The outbound provider call still occurred even if the SDK
-            # raised before a valid usage payload was available.
-            self.usage_collector.record_call()
+                if attempt < max_retries:
+                    logger.warning(
+                        "Provider empty response -> retry %s/%s",
+                        attempt + 1,
+                        max_retries,
+                    )
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
 
-            raise HelloAgentsException(
-                f"LLM调用失败: {str(exc)}"
-            )
+                logger.error(
+                    "Provider empty response retries exhausted"
+                )
+                raise HelloAgentsException(
+                    f"LLM provider response invalid: {exc}"
+                ) from exc
+
+            except Exception as exc:
+                # Provider exceptions are not empty responses; authentication,
+                # configuration, and request errors must fail promptly.
+                self.usage_collector.record_call()
+                raise HelloAgentsException(
+                    f"LLM调用失败: {str(exc)}"
+                ) from exc
+
+        raise AssertionError("unreachable")
 
     def stream_invoke(
         self,
