@@ -15,6 +15,7 @@ from models import (
     SensitivityResult,
     TechnicalContext,
 )
+from services.search_strategy import classify_gap_claim_type
 
 
 IMPACT_PRIORITY = {
@@ -132,7 +133,17 @@ def enrich_research_gaps_with_decision_impact(
         technical_context
     )
 
+    criterion_names = {
+        criterion.criterion_id: criterion.name
+        for criterion in decision.criteria
+    }
+
     for gap in analysis.research_gaps:
+        criterion_name = criterion_names.get(
+            gap.criterion_id,
+            "",
+        )
+
         impact, reasons = _classify_gap_impact(
             gap=gap,
             winner_id=winner_id,
@@ -147,6 +158,27 @@ def enrich_research_gaps_with_decision_impact(
         gap.decision_impact = impact
         gap.priority = IMPACT_PRIORITY[impact]
         gap.impact_reasons = reasons
+
+        claim_type = classify_gap_claim_type(
+            criterion_name=criterion_name,
+            description=gap.description,
+        )
+
+        gap.impact_reasons.append(
+            f"claim_type:{claim_type}"
+        )
+
+        if _is_context_resolvable_without_web(
+            claim_type,
+            criterion_name,
+            technical_context,
+        ):
+            gap.status = "not_externally_researchable"
+            gap.suggested_query = None
+            gap.impact_reasons.append(
+                "Explicit user technical context is authoritative; "
+                "external research would not resolve this gap."
+            )
 
         (
             gap.suggested_query,
@@ -398,18 +430,60 @@ def _contextualize_query(
     if not context_terms:
         return query, []
 
-    result = query.strip()
-    normalized = result.casefold()
-    dimensions: list[str] = []
+    dimensions = [
+        dimension
+        for dimension, _ in context_terms
+    ]
 
-    for dimension, value in context_terms:
-        if value.casefold() not in normalized:
-            result += f" {value}"
-            normalized = result.casefold()
+    # Preserve context provenance without turning user-provided facts into
+    # web-search terms that ask external sources to prove the user's own
+    # environment, budget, or team capabilities.
+    return query.strip(), _dedupe(dimensions)
 
-        dimensions.append(dimension)
 
-    return result, _dedupe(dimensions)
+def _is_context_resolvable_without_web(
+    claim_type: str,
+    criterion_name: str,
+    context: TechnicalContext | None,
+) -> bool:
+    if claim_type == "USER_CONTEXT":
+        return True
+
+    if (
+        context is None
+        or claim_type != "ARCHITECTURE_INTEGRATION_FIT"
+    ):
+        return False
+
+    team_fit_terms = {
+        "team", "familiarity", "skills", "learning curve",
+        "maintenance cost", "operational fit", "operational complexity",
+        "团队", "熟悉", "技能", "学习成本", "维护成本", "运维适配",
+        "运维复杂度",
+    }
+
+    if (
+        bool(context.team_capabilities)
+        and any(
+            term in criterion_name.casefold()
+            for term in team_fit_terms
+        )
+    ):
+        return True
+
+    deployment_fit_terms = {
+        "deployment environment", "deployment fit", "current environment",
+        "self-hosted", "kubernetes experience", "部署环境", "部署适配",
+        "当前环境", "自托管", "kubernetes 经验",
+    }
+
+    return (
+        bool(context.deployment_environment)
+        and any(
+            term in criterion_name.casefold()
+            for term in deployment_fit_terms
+        )
+    )
 
 
 def _dedupe(values: list[str]) -> list[str]:

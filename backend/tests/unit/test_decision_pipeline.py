@@ -653,7 +653,7 @@ def test_pipeline_enriches_gap_decision_impact():
 
     assert all(
         "Docker-only"
-        in (gap.suggested_query or "")
+        not in (gap.suggested_query or "")
         for gap in gaps
     )
 
@@ -1325,8 +1325,8 @@ def test_pipeline_attaches_search_strategy_to_research_gaps():
     )
 
     assert all(
-        "benchmark"
-        in gap.preferred_source_types
+        gap.preferred_source_types
+        == ["official_documentation"]
         for gap in scale_gaps
     )
 
@@ -1424,25 +1424,10 @@ def test_pipeline_attaches_source_strategy_match_metadata():
         == "PERFORMANCE_SCALE"
     )
 
-    # Official docs are present, but Phase 25 also asks for
-    # benchmark + academic evidence.
-    assert (
-        item.strategy_match_status
-        in {
-            "PARTIAL",
-            "NONE",
-        }
-    )
-
-    assert (
-        "benchmark"
-        in item.missing_source_types
-    )
-
-    assert (
-        "academic_paper"
-        in item.missing_source_types
-    )
+    # Scalability capability is a product claim, so direct official
+    # documentation is sufficient without demanding every source category.
+    assert item.strategy_match_status == "FULL"
+    assert item.missing_source_types == []
 
 
 def test_pipeline_attaches_source_strategy_match_metadata():
@@ -1538,22 +1523,7 @@ def test_pipeline_attaches_source_strategy_match_metadata():
         == "PERFORMANCE_SCALE"
     )
 
-    # Official docs are present, but Phase 25 also asks for
-    # benchmark + academic evidence.
-    assert (
-        item.strategy_match_status
-        in {
-            "PARTIAL",
-            "NONE",
-        }
-    )
-
-    assert (
-        "benchmark"
-        in item.missing_source_types
-    )
-
-    assert (
-        "academic_paper"
-        in item.missing_source_types
-    )
+    # Scalability capability is a product claim, so direct official
+    # documentation is sufficient without demanding every source category.
+    assert item.strategy_match_status == "FULL"
+    assert item.missing_source_types == []

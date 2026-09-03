@@ -141,6 +141,77 @@ COST_TERMS = {
     "tco",
 }
 
+COMPARATIVE_TERMS = {
+    "benchmark", "compare", "comparison", "faster", "slower",
+    "better", "worse", "versus", " vs ", "性能对比", "更快", "优于",
+}
+
+CAPABILITY_TERMS = {
+    "support", "supports", "capability", "feature", "transaction", "acid",
+    "replication", "distributed", "scalability", "horizontal scaling",
+    "支持", "事务", "复制", "水平扩展",
+}
+
+USER_CONTEXT_TERMS = {
+    "team familiarity", "team capability", "team skills", "team experience",
+    "deployment environment", "current environment", "existing stack",
+    "budget constraint", "团队熟悉", "团队能力", "团队经验", "部署环境",
+    "no kubernetes", "docker environment", "self-hosted",
+    "现有技术栈", "预算有限", "没有 kubernetes", "当前环境", "自托管",
+}
+
+ARCHITECTURE_FIT_TERMS = {
+    "architecture", "integration", "migration", "operational fit",
+    "operational complexity", "deployment fit", "maintenance cost",
+    "learning curve", "new operational skills",
+    "架构", "集成", "迁移", "运维适配", "维护成本", "学习成本",
+    "运维复杂度", "部署适配",
+}
+
+HARD_CONSTRAINT_TERMS = {
+    "hard constraint", "must support", "required feature", "必须支持", "硬约束",
+}
+
+
+def classify_gap_claim_type(
+    *,
+    criterion_name: str,
+    description: str,
+) -> str:
+    """Classify what kind of uncertainty a research gap represents."""
+    text = f" {criterion_name} {description} ".casefold()
+
+    if any(term in text for term in USER_CONTEXT_TERMS):
+        return "USER_CONTEXT"
+    if any(term in text for term in HARD_CONSTRAINT_TERMS):
+        return "HARD_CONSTRAINT"
+    if any(term in text for term in COMPARATIVE_TERMS):
+        return "COMPARATIVE_PERFORMANCE"
+    if any(term in text for term in ARCHITECTURE_FIT_TERMS):
+        return "ARCHITECTURE_INTEGRATION_FIT"
+    if any(term in text for term in CAPABILITY_TERMS):
+        return "PRODUCT_CAPABILITY"
+    return "GENERAL_EVIDENCE"
+
+
+def preferred_sources_for_claim_type(
+    claim_type: str,
+    default_source_types: list[str],
+) -> list[str]:
+    """Return sufficient, claim-aware evidence expectations."""
+    if claim_type in {"PRODUCT_CAPABILITY", "HARD_CONSTRAINT"}:
+        return ["official_documentation"]
+    if claim_type == "COMPARATIVE_PERFORMANCE":
+        return ["benchmark"]
+    if claim_type == "ARCHITECTURE_INTEGRATION_FIT":
+        return [
+            "official_documentation",
+            "migration_guide",
+        ]
+    if claim_type == "USER_CONTEXT":
+        return []
+    return list(default_source_types)
+
 
 def assign_search_strategies(
     decision: DecisionCase,
@@ -164,6 +235,12 @@ def assign_search_strategies(
     }
 
     for gap in gaps:
+        if gap.status != "open":
+            gap.preferred_source_types = []
+            gap.query_qualifiers = []
+            gap.suggested_query = None
+            continue
+
         criterion_name = criterion_names.get(
             gap.criterion_id,
             "",
@@ -182,8 +259,18 @@ def assign_search_strategies(
 
         gap.search_strategy = strategy
 
-        gap.preferred_source_types = list(
-            STRATEGY_SOURCE_TYPES[strategy]
+        claim_type = (
+            "GENERAL_EVIDENCE"
+            if gap.gap_type == "reevaluation"
+            else classify_gap_claim_type(
+                criterion_name=criterion_name,
+                description=gap.description,
+            )
+        )
+
+        gap.preferred_source_types = preferred_sources_for_claim_type(
+            claim_type,
+            STRATEGY_SOURCE_TYPES[strategy],
         )
 
         gap.query_qualifiers = list(

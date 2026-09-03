@@ -249,7 +249,7 @@ def test_incomplete_comparison_is_unknown():
     assert result.priority == 0
 
 
-def test_context_is_added_to_query():
+def test_context_is_recorded_without_becoming_search_terms():
     context = TechnicalContext(
         deployment_environment=["Docker-only"],
         existing_stack=["Python", "FastAPI"],
@@ -270,10 +270,7 @@ def test_context_is_added_to_query():
 
     result = analysis.research_gaps[0]
 
-    assert "Docker-only" in result.suggested_query
-    assert "Python" in result.suggested_query
-    assert "FastAPI" in result.suggested_query
-    assert "small DevOps team" in result.suggested_query
+    assert result.suggested_query == "A operations benchmark"
 
     assert (
         "deployment_environment"
@@ -281,7 +278,7 @@ def test_context_is_added_to_query():
     )
 
 
-def test_context_query_does_not_duplicate_existing_term():
+def test_existing_context_term_in_query_is_preserved_once():
     context = TechnicalContext(
         deployment_environment=["Docker-only"]
     )

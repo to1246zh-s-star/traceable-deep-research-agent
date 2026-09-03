@@ -53,6 +53,7 @@ def select_research_gaps(
 
     selected: list[ResearchGap] = []
     selected_queries: set[str] = set()
+    selected_pairs: set[tuple[str, str]] = set()
 
     for gap in sorted(
         analysis.research_gaps,
@@ -63,6 +64,14 @@ def select_research_gaps(
         ),
     ):
         if gap.status != "open":
+            continue
+
+        pair = (
+            gap.candidate_id,
+            gap.criterion_id,
+        )
+
+        if pair in selected_pairs:
             continue
 
         if (
@@ -95,6 +104,7 @@ def select_research_gaps(
 
         selected.append(gap)
         selected_queries.add(normalized_query)
+        selected_pairs.add(pair)
 
         if len(selected) >= max_tasks:
             break

@@ -288,6 +288,10 @@ def detect_research_gaps(
             if coverage.signal_count == 0:
                 gaps.append(
                     ResearchGap(
+                        gap_id=(
+                            f"gap_{candidate.candidate_id}_"
+                            f"{criterion.criterion_id}_missing_evidence"
+                        ),
                         candidate_id=candidate.candidate_id,
                         criterion_id=criterion.criterion_id,
                         gap_type="missing_evidence",
@@ -311,6 +315,10 @@ def detect_research_gaps(
 
                 gaps.append(
                     ResearchGap(
+                        gap_id=(
+                            f"gap_{candidate.candidate_id}_"
+                            f"{criterion.criterion_id}_low_coverage"
+                        ),
                         candidate_id=candidate.candidate_id,
                         criterion_id=criterion.criterion_id,
                         gap_type="low_coverage",
@@ -334,6 +342,10 @@ def detect_research_gaps(
             ):
                 gaps.append(
                     ResearchGap(
+                        gap_id=(
+                            f"gap_{candidate.candidate_id}_"
+                            f"{criterion.criterion_id}_weak_source"
+                        ),
                         candidate_id=candidate.candidate_id,
                         criterion_id=criterion.criterion_id,
                         gap_type="weak_source",
@@ -356,6 +368,10 @@ def detect_research_gaps(
             if conflict.resolution_status == "unresolved":
                 gaps.append(
                     ResearchGap(
+                        gap_id=(
+                            f"gap_{candidate.candidate_id}_"
+                            f"{criterion.criterion_id}_conflicting_evidence"
+                        ),
                         candidate_id=candidate.candidate_id,
                         criterion_id=criterion.criterion_id,
                         gap_type="conflicting_evidence",

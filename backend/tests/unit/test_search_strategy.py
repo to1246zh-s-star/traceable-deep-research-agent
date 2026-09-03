@@ -86,10 +86,9 @@ def test_scalability_uses_performance_strategy():
         == "PERFORMANCE_SCALE"
     )
 
-    assert (
-        "benchmark"
-        in item.preferred_source_types
-    )
+    assert item.preferred_source_types == [
+        "official_documentation"
+    ]
 
 
 def test_security_uses_security_strategy():
