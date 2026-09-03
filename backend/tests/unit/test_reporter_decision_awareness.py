@@ -217,17 +217,16 @@ def test_report_llm_failure_returns_deterministic_fallback():
 
     report = service.generate_report(state)
 
-    assert "# 研究报告" in report
-    assert (
-        "Decision readiness: **CONFLICTED**"
-        in report
-    )
-    assert (
-        "不构成最终技术选型"
-        in report
-    )
-    assert "Evidence summary" in report
-    assert "Source summary" in report
+    assert report.startswith("# 技术选型结论")
+    assert "## 候选方案对比" in report
+    assert "## 硬约束检查" in report
+    assert "## 关键证据" in report
+    assert "## 风险与未知" in report
+    assert "## 推荐反转条件" in report
+    assert "Decision readiness" not in report
+    assert "任务 1:" not in report
+    assert "Evidence summary" not in report
+    assert "Source summary" not in report
 
 
 def test_report_llm_failure_does_not_invent_winner():
@@ -256,11 +255,8 @@ def test_empty_report_output_uses_fallback():
         make_state("CONFLICTED")
     )
 
-    assert "# 研究报告" in report
-    assert (
-        "Decision readiness: **CONFLICTED**"
-        in report
-    )
+    assert report.startswith("# 技术选型结论")
+    assert "## 推荐反转条件" in report
 
 
 def test_non_decision_report_failure_also_degrades_gracefully():
