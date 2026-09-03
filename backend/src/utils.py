@@ -6,6 +6,8 @@ import logging
 from typing import Any, Dict, List, Union
 from urllib.parse import urlparse
 
+from services.source_authority import official_source_owner
+
 CHARS_PER_TOKEN = 4
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,12 @@ def classify_source_tier(url: str) -> tuple[int, str]:
 
     if hostname in tier_2_domains:
         return 2, "二级来源"
+
+    # Official vendor ownership raises an otherwise unknown source to tier 2,
+    # not tier 1: first-party product information is authoritative for its own
+    # capabilities but is not independent validation.
+    if official_source_owner(hostname) is not None:
+        return 2, "二级来源（官方厂商来源，非独立验证）"
 
     if hostname in tier_3_domains:
         return 3, "三级来源"

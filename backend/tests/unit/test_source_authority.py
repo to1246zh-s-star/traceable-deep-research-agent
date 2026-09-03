@@ -1,3 +1,5 @@
+import pytest
+
 from models import (
     Candidate,
     DecisionCase,
@@ -586,3 +588,77 @@ def test_vendor_blog_is_not_mislabeled_as_documentation():
 
     assert result.authority_type == "VENDOR"
     assert result.authority_level == "MEDIUM"
+
+
+def decision_for(candidate_name):
+    return DecisionCase(
+        decision_id="dec_official_domain",
+        question=f"Should we choose {candidate_name}?",
+        candidates=[
+            Candidate(
+                candidate_id="cand_official_domain",
+                name=candidate_name,
+            )
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("candidate_name", "url"),
+    [
+        ("PostgreSQL", "https://postgresql.org/docs/current/"),
+        ("PostgreSQL", "https://www.postgresql.org/docs/current/"),
+        ("MongoDB", "https://mongodb.com/docs/manual/"),
+        ("Microsoft", "https://learn.microsoft.com/en-us/azure/"),
+        ("AWS", "https://docs.aws.amazon.com/AmazonRDS/latest/"),
+    ],
+)
+def test_known_candidate_owner_documentation_is_official(
+    candidate_name,
+    url,
+):
+    result = recognize_source_authority(
+        evidence(url, title=f"{candidate_name} Documentation"),
+        decision_for(candidate_name),
+    )
+
+    assert result.authority_type == "OFFICIAL_DOCUMENTATION"
+    assert result.authority_level == "HIGH"
+    assert any(
+        signal.startswith("official_owner:")
+        for signal in result.signals
+    )
+
+
+def test_openai_blog_is_official_vendor_but_not_postgresql_docs():
+    result = recognize_source_authority(
+        evidence(
+            "https://openai.com/index/scaling-postgresql/",
+            title="Scaling PostgreSQL",
+        ),
+        decision_for("PostgreSQL"),
+    )
+
+    assert result.authority_type == "VENDOR"
+    assert result.authority_level == "MEDIUM"
+    assert "official_owner:OpenAI" in result.signals
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://mongodb.com.evil.example/docs/",
+        "https://amazon.com.fake.example/docs/",
+        "https://postgresql.org.attacker.example/docs/",
+    ],
+)
+def test_official_domain_lookalikes_are_not_vendor_sources(url):
+    result = recognize_source_authority(
+        evidence(url, title="Documentation"),
+        decision_for("PostgreSQL"),
+    )
+
+    assert result.authority_type not in {
+        "OFFICIAL_DOCUMENTATION",
+        "VENDOR",
+    }

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from models import DecisionCase, Evidence
@@ -14,6 +14,26 @@ class SourceAuthority:
     authority_type: str = "UNKNOWN"
     authority_level: str = "UNKNOWN"
     signals: list[str] = field(default_factory=list)
+
+
+# Deterministic ownership registry for official product/vendor domains.  A
+# match establishes who owns the source; it does not establish independence
+# or make that owner first-party for some other product mentioned on the page.
+OFFICIAL_DOMAIN_OWNERS = {
+    "postgresql.org": "PostgreSQL",
+    "mongodb.com": "MongoDB",
+    "aws.amazon.com": "AWS",
+    "microsoft.com": "Microsoft",
+    "openai.com": "OpenAI",
+}
+
+OFFICIAL_OWNER_IDENTITIES = {
+    "PostgreSQL": {"postgresql", "postgres"},
+    "MongoDB": {"mongodb"},
+    "AWS": {"aws", "amazonwebservices"},
+    "Microsoft": {"microsoft", "azure"},
+    "OpenAI": {"openai"},
+}
 
 
 ACADEMIC_HOSTS = {
@@ -161,11 +181,45 @@ def recognize_source_authority(
             decision,
         )
 
+    official_owner = official_source_owner(
+        hostname
+    )
+
     vendor_match = _match_candidate_vendor(
         hostname,
         title,
         decision,
     )
+
+    owner_matches_candidate = (
+        official_owner is not None
+        and _official_owner_matches_candidate(
+            official_owner,
+            decision,
+        )
+    )
+
+    if official_owner is not None and not owner_matches_candidate:
+        signals = [
+            f"official_owner:{official_owner}",
+            f"hostname:{hostname}",
+            "official_vendor_not_candidate_owner",
+        ]
+
+        if _looks_like_documentation_surface(
+            hostname,
+            url_text,
+            title,
+        ):
+            signals.append(
+                "vendor_documentation_surface"
+            )
+
+        return SourceAuthority(
+            authority_type="VENDOR",
+            authority_level="MEDIUM",
+            signals=signals,
+        )
 
     if vendor_match is not None:
         candidate_id, candidate_name = (
@@ -179,6 +233,11 @@ def recognize_source_authority(
             ),
             f"hostname:{hostname}",
         ]
+
+        if official_owner is not None:
+            signals.append(
+                f"official_owner:{official_owner}"
+            )
 
         if _contains_any(
             combined,
@@ -448,6 +507,27 @@ def _match_candidate_vendor(
         if len(candidate_identity) < 2:
             continue
 
+        # Known identities must use the deterministic ownership registry.
+        # Seeing "postgresql" as a label in postgresql.org.attacker.example
+        # is not evidence that PostgreSQL owns that hostname.
+        known_owner = next(
+            (
+                owner
+                for owner, identities
+                in OFFICIAL_OWNER_IDENTITIES.items()
+                if candidate_identity in identities
+            ),
+            None,
+        )
+
+        if known_owner is not None:
+            if official_source_owner(hostname) == known_owner:
+                return (
+                    candidate.candidate_id,
+                    candidate_name,
+                )
+            continue
+
         if candidate_identity in host_labels:
             return (
                 candidate.candidate_id,
@@ -455,6 +535,48 @@ def _match_candidate_vendor(
             )
 
     return None
+
+
+def official_source_owner(
+    hostname: str,
+) -> str | None:
+    """Return the deterministic owner of an official hostname, if known."""
+    normalized_hostname = (
+        hostname
+        .strip()
+        .casefold()
+        .rstrip(".")
+        .removeprefix("www.")
+    )
+
+    for domain, owner in OFFICIAL_DOMAIN_OWNERS.items():
+        if (
+            normalized_hostname == domain
+            or normalized_hostname.endswith(
+                "." + domain
+            )
+        ):
+            return owner
+
+    return None
+
+
+def _official_owner_matches_candidate(
+    owner: str,
+    decision: DecisionCase | None,
+) -> bool:
+    if decision is None:
+        return False
+
+    owner_identities = (
+        OFFICIAL_OWNER_IDENTITIES[owner]
+    )
+
+    return any(
+        _normalize_identity(candidate.name)
+        in owner_identities
+        for candidate in decision.candidates
+    )
 
 
 def _github_repo_matches_candidate(
