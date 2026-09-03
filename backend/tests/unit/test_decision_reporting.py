@@ -74,16 +74,17 @@ def test_non_decision_has_no_reporting_context():
     )
 
 
-def test_missing_readiness_has_no_reporting_context():
+def test_missing_readiness_preserves_structured_state_as_unknown():
     state = SummaryState(
         research_topic="A vs B",
         decision_case=make_decision(),
     )
 
-    assert (
-        build_decision_reporting_context(state)
-        == ""
-    )
+    context = build_decision_reporting_context(state)
+
+    assert "Readiness status: UNKNOWN" in context
+    assert "PROVISIONAL_ONLY" in context
+    assert "AUTHORITATIVE STRUCTURED DECISION STATE" in context
 
 
 def test_ready_allows_definitive_recommendation():

@@ -13,6 +13,7 @@ from utils import strip_thinking_tokens
 from services.text_processing import strip_tool_calls
 from services.context_engineering import ContextAssembler
 from services.report_context import select_report_context
+from services.decision_reporting import build_decision_reporting_context
 from services.runtime_notices import record_runtime_notice
 from services.llm_runtime_circuit import (
     is_llm_circuit_open,
@@ -75,6 +76,12 @@ class ReportingService:
         prompt = (
             f"{assembled_context.rendered_text}\n\n"
             "REPORT INSTRUCTION:\n"
+            "SOURCE-OF-TRUTH PRECEDENCE:\n"
+            "1. AUTHORITATIVE STRUCTURED STATE controls factual conclusions.\n"
+            "2. NON-AUTHORITATIVE RESEARCH NARRATIVE is supporting material only.\n"
+            "3. On conflict, ignore narrative and preserve structured status.\n"
+            "4. UNKNOWN is uncertainty, never FALSE or UNSATISFIED.\n"
+            "5. Missing evidence is not evidence of absence.\n"
             "请基于以上上下文撰写最终研究报告。"
             "不要补造不存在的 evidence、candidate score、"
             "constraint judgment 或 recommendation。\n"
@@ -161,6 +168,20 @@ class ReportingService:
             "",
         ]
 
+        decision_truth = build_decision_reporting_context(
+            state
+        )
+
+        if decision_truth:
+            lines.extend(
+                [
+                    "## AUTHORITATIVE STRUCTURED STATE",
+                    "",
+                    decision_truth,
+                    "",
+                ]
+            )
+
         decision = state.decision_case
         readiness = state.decision_readiness
 
@@ -238,6 +259,18 @@ class ReportingService:
         lines.extend(
             [
                 "## 核心研究结果",
+                "",
+            ]
+        )
+
+        lines.extend(
+            [
+                "## NON-AUTHORITATIVE RESEARCH NARRATIVE",
+                "",
+                (
+                    "Task summaries below are supporting narrative only; "
+                    "they cannot override authoritative structured state."
+                ),
                 "",
             ]
         )

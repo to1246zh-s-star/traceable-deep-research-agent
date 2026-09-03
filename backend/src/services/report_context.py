@@ -6,7 +6,6 @@ from models import SummaryState
 
 from services.context_engineering import (
     CONTEXT_PRIORITY_CRITICAL,
-    CONTEXT_PRIORITY_HIGH,
     CONTEXT_PRIORITY_NORMAL,
     ContextSection,
     ContextSelection,
@@ -54,10 +53,11 @@ def select_report_context(
     if decision_context:
         sections.append(
             ContextSection(
-                name="Decision Context",
+                name="AUTHORITATIVE STRUCTURED STATE",
                 content=decision_context,
                 priority=
-                    CONTEXT_PRIORITY_HIGH,
+                    CONTEXT_PRIORITY_CRITICAL,
+                required=True,
             )
         )
 
@@ -116,7 +116,7 @@ def select_report_context(
     if task_blocks:
         sections.append(
             ContextSection(
-                name="Research Tasks",
+                name="NON-AUTHORITATIVE RESEARCH NARRATIVE",
                 content="\n\n".join(
                     task_blocks
                 ),
@@ -145,7 +145,7 @@ def select_report_context(
     if note_references:
         sections.append(
             ContextSection(
-                name="Task Notes",
+                name="NON-AUTHORITATIVE TASK NOTE REFERENCES",
                 content="\n".join(
                     note_references
                 ),

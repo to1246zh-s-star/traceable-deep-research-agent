@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+
 from models import SummaryState
 
 
@@ -27,11 +30,12 @@ def build_decision_reporting_context(
     decision = state.decision_case
     readiness = state.decision_readiness
 
-    if decision is None or readiness is None:
+    if decision is None:
         return ""
 
     readiness_status = str(
-        readiness.status or "UNKNOWN"
+        (readiness.status if readiness is not None else "UNKNOWN")
+        or "UNKNOWN"
     ).upper()
 
     recommendation = (
@@ -73,7 +77,8 @@ def build_decision_reporting_context(
     )
 
     blocking_reasons = list(
-        readiness.blocking_reasons or []
+        (readiness.blocking_reasons if readiness is not None else [])
+        or []
     )
 
     if definitive_allowed:
@@ -127,20 +132,91 @@ def build_decision_reporting_context(
         ]
 
     lines = [
-        "=== DETERMINISTIC DECISION INTELLIGENCE CONTEXT ===",
+        "=== AUTHORITATIVE STRUCTURED DECISION STATE ===",
+        "SOURCE-OF-TRUTH RULES:",
+        "- This structured decision state is authoritative.",
+        (
+            "- Task summaries, notes, and source summaries are "
+            "NON-AUTHORITATIVE RESEARCH NARRATIVE only."
+        ),
+        (
+            "- If narrative conflicts with structured state, ignore the "
+            "conflicting narrative statement."
+        ),
+        "- Never contradict a structured constraint or claim status.",
+        (
+            "- UNKNOWN must remain UNKNOWN and be described as insufficient "
+            "evidence or unresolved uncertainty."
+        ),
+        (
+            "- Missing or weak evidence is not negative evidence and must "
+            "not become unsupported, absent, failed, or unsatisfied."
+        ),
+        (
+            "- SATISFIED may be stated as satisfied; UNSATISFIED may be "
+            "stated as unsatisfied."
+        ),
+        (
+            "- USER_PROVIDED_CONTEXT may be stated as context fact. Derived "
+            "judgments must be labeled as inference and not invent effects."
+        ),
         f"Decision question: {decision.question}",
+        "Candidates: " + _json([asdict(item) for item in decision.candidates]),
+        "Criteria: " + _json([asdict(item) for item in decision.criteria]),
+        "Hard constraints (canonical status): " + _json(
+            _canonical_constraint_statuses(state)
+        ),
+        "Decision evaluation: " + _json(
+            asdict(state.decision_evaluation)
+            if state.decision_evaluation is not None
+            else None
+        ),
+        "USER_PROVIDED_CONTEXT: " + _json(
+            asdict(state.technical_context)
+            if state.technical_context is not None
+            else None
+        ),
+        "Candidate criterion assessments: " + _json(
+            asdict(state.decision_comparison)
+            if state.decision_comparison is not None
+            else None
+        ),
+        "Structured claims: " + _json(
+            {
+                "claims": [asdict(item) for item in state.claims],
+                "atomic_claims": [asdict(item) for item in state.atomic_claims],
+            }
+        ),
+        "Structured evidence: " + _json(
+            {
+                "evidence": [asdict(item) for item in state.evidence_items],
+                "assessments": [
+                    asdict(item) for item in state.evidence_assessments
+                ],
+            }
+        ),
+        "Unresolved research gaps: " + _json(
+            [
+                asdict(item)
+                for item in getattr(analysis, "research_gaps", [])
+                if item.status != "resolved"
+            ]
+        ),
         f"Readiness status: {readiness_status}",
         (
             "Structured recommendation: PRESENT"
             if recommendation is not None
             else "Structured recommendation: MISSING"
         ),
-        f"Readiness score: {readiness.overall_score:.3f}",
-        f"Criterion coverage: {readiness.criterion_coverage:.3f}",
-        f"Evidence quality: {readiness.evidence_quality:.3f}",
-        f"Applicability: {readiness.applicability:.3f}",
-        f"Agreement score: {readiness.agreement_score:.3f}",
-        f"Decision margin: {readiness.decision_margin:.3f}",
+        "Structured recommendation value: " + _json(recommendation),
+        "Recommendation robustness: " + _json(
+            asdict(state.recommendation_robustness)
+            if state.recommendation_robustness is not None
+            else None
+        ),
+        "Readiness details: " + _json(
+            asdict(readiness) if readiness is not None else None
+        ),
         f"Stopping reason: {stopping_reason}",
         f"Actionable research gaps: {actionable_gap_count}",
     ]
@@ -165,8 +241,61 @@ def build_decision_reporting_context(
             (
                 "Do not override or reinterpret its readiness status."
             ),
-            "=== END DECISION INTELLIGENCE CONTEXT ===",
+            "=== END AUTHORITATIVE STRUCTURED DECISION STATE ===",
         ]
     )
 
     return "\n".join(lines)
+
+
+def _canonical_constraint_statuses(
+    state: SummaryState,
+) -> list[dict[str, str]]:
+    decision = state.decision_case
+    if decision is None:
+        return []
+
+    evaluation = state.decision_evaluation
+    results = {
+        item.candidate_id: item
+        for item in (
+            evaluation.candidate_results
+            if evaluation is not None
+            else []
+        )
+    }
+    rows: list[dict[str, str]] = []
+
+    for candidate in decision.candidates:
+        result = results.get(candidate.candidate_id)
+        for constraint in decision.constraints:
+            if (
+                result is None
+                or constraint.constraint_id in result.missing_constraint_ids
+            ):
+                status = "UNKNOWN"
+            elif constraint.constraint_id in result.violated_constraint_ids:
+                status = "UNSATISFIED"
+            else:
+                status = "SATISFIED"
+
+            rows.append(
+                {
+                    "candidate_id": candidate.candidate_id,
+                    "candidate_name": candidate.name,
+                    "constraint_id": constraint.constraint_id,
+                    "constraint": constraint.text,
+                    "status": status,
+                }
+            )
+
+    return rows
+
+
+def _json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )

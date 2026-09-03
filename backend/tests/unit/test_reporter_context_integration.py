@@ -58,7 +58,10 @@ def test_reporter_uses_assembled_context():
     assert "## Research Topic" in prompt
     assert "Choose database" in prompt
 
-    assert "## Research Tasks" in prompt
+    assert (
+        "## NON-AUTHORITATIVE RESEARCH NARRATIVE"
+        in prompt
+    )
     assert (
         "PostgreSQL performed well"
         in prompt

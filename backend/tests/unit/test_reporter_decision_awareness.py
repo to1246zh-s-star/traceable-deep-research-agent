@@ -102,7 +102,7 @@ def test_conflicted_report_prompt_contains_provisional_policy():
     prompt = agent.prompts[0]
 
     assert (
-        "DETERMINISTIC DECISION INTELLIGENCE CONTEXT"
+        "AUTHORITATIVE STRUCTURED DECISION STATE"
         in prompt
     )
     assert (
