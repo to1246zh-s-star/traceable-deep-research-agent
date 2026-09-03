@@ -6,6 +6,7 @@ from models import (
     DecisionComparison,
     DecisionEvaluation,
     DecisionReadiness,
+    DecisionReevaluationTrigger,
     SummaryState,
     TodoItem,
 )
@@ -236,6 +237,31 @@ def test_fallback_report_does_not_invent_recommendation():
     assert "PostgreSQL 综合表现靠前" in report
     assert "系统尚未形成确定推荐" in report
     assert "正式建议：" not in report
+
+
+def test_fallback_report_does_not_expose_reevaluation_debug_rationale():
+    state = decision_state()
+    state.decision_reevaluation_triggers = [
+        DecisionReevaluationTrigger(
+            trigger_id="trigger_context",
+            decision_id="dec_database",
+            trigger_type="TECHNICAL_CONTEXT_CHANGE",
+            source_type="technical_context",
+            source_field="team_capabilities",
+            source_value="团队主要熟悉 PostgreSQL",
+            rationale=[
+                "Recompute affected modules: integration_assessment.",
+                "1 counterfactual dependency path is linked.",
+            ],
+        )
+    ]
+
+    report = build_fallback_user_report(state)
+
+    assert "团队主要熟悉 PostgreSQL" in report
+    assert "发生变化，应重新评估" in report
+    assert "Recompute affected modules" not in report
+    assert "counterfactual dependency path" not in report
 
 
 def test_generic_research_report_does_not_require_decision_sections():

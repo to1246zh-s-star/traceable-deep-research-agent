@@ -30,6 +30,9 @@ FORBIDDEN_INTERNAL_MARKERS = (
     "USER-FACING PRESENTATION CONTRACT",
     "REPORT INSTRUCTION",
     "REPORTING POLICY",
+    "RECOMPUTE AFFECTED MODULES",
+    "COUNTERFACTUAL DEPENDENCY PATH",
+    "CURRENT DECISION INTELLIGENCE DEPENDS",
     "candidate_id",
     "criterion_id",
     "constraint_id",
@@ -383,13 +386,55 @@ def _reversal_projection(state: SummaryState) -> list[str]:
     decision = state.decision_case
     assert decision is not None
 
+    criterion_names = {
+        criterion.criterion_id: _safe_text(criterion.name)
+        for criterion in decision.criteria
+    }
     lines: list[str] = []
+
     for trigger in state.decision_reevaluation_triggers:
-        for rationale in getattr(trigger, "rationale", []) or []:
-            if text := _safe_text(rationale):
-                lines.append(f"- {text}")
+        trigger_type = str(
+            getattr(trigger, "trigger_type", "")
+            or ""
+        ).upper()
+
+        if trigger_type == "TECHNICAL_CONTEXT_CHANGE":
+            source_value = _safe_text(
+                getattr(trigger, "source_value", None)
+            )
+            if source_value:
+                lines.append(
+                    "- 若以下已知条件发生变化，应重新评估："
+                    f"{source_value}。"
+                )
+
+        elif trigger_type == "CRITERION_PRIORITY_CHANGE":
+            names = [
+                criterion_names[criterion_id]
+                for criterion_id in getattr(
+                    trigger,
+                    "affected_criterion_ids",
+                    [],
+                )
+                if criterion_names.get(criterion_id)
+            ]
+            if names:
+                lines.append(
+                    "- 若“"
+                    + "、".join(names)
+                    + "”的优先级发生变化，应重新评估比较结论。"
+                )
+
+    lines = list(dict.fromkeys(lines))
 
     if lines:
+        if not _safe_text(decision.recommendation):
+            return [
+                "- 当前尚无正式推荐；以下内容是重新评估条件，"
+                "不是既定推荐的反转结论。",
+                *lines,
+            ]
+
         return lines
 
     if _safe_text(decision.recommendation):
