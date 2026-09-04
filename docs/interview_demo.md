@@ -6,12 +6,13 @@ than reading it as a script.
 
 ## Canonical Prompt
 
-> We are designing a multi-tenant B2B SaaS platform. Choose PostgreSQL or
-> MongoDB for the primary transactional store. We need strong tenant
-> isolation, auditable financial updates, evolving customer-defined metadata,
-> a small operations team, and deployment on managed cloud services. Compare
-> both options, identify unresolved constraints, and make only the strongest
-> recommendation supported by evidence.
+> We are designing a multi-tenant B2B SaaS platform and need to choose
+> PostgreSQL or MongoDB as the primary database. Orders, billing, and
+> authorization require strong transaction consistency and complex queries.
+> The team mainly knows PostgreSQL, but future data volume and concurrency make
+> horizontal scaling relevant. Use reliable evidence, distinguish hard
+> constraints from criteria and unknowns, and explain what changes could alter
+> the outcome. Do not force a recommendation when evidence is insufficient.
 
 ## Before the Interview
 
