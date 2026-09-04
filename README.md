@@ -502,5 +502,17 @@ Tool execution passes through declared runtime boundaries. Credentials belong
 in ignored environment files; persisted traces are sanitized and should not
 contain prompts, evidence bodies, or secrets.
 
+Frontend-generated Markdown crosses an explicit rendering boundary:
+
+```text
+Final Report Markdown
+→ marked.parse()
+→ DOMPurify.sanitize()
+→ v-html
+```
+
+This preserves readable report output while reducing the risk of rendering
+unsafe generated HTML.
+
 No top-level license file is currently included. Add one before redistributing
 or accepting external contributions.
