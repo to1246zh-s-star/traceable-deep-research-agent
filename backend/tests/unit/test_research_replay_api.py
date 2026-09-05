@@ -1,8 +1,14 @@
+from copy import deepcopy
+from hashlib import sha256
+
 from fastapi.testclient import TestClient
 
 from main import create_app
 from models import (
+    Candidate,
     Claim,
+    DecisionCase,
+    DecisionReadiness,
     Evidence,
     ExecutionEvent,
     ExecutionTrace,
@@ -14,6 +20,7 @@ from models import (
 def make_state() -> SummaryState:
     state = SummaryState(
         research_topic="Qdrant vs Milvus",
+        structured_report="# Technical decision report",
     )
 
     state.todo_items = [
@@ -111,6 +118,7 @@ def test_replay_endpoint_aggregates_research_artifacts():
     assert payload["trace_count"] == 1
     assert payload["claim_count"] == 1
     assert payload["evidence_count"] == 1
+    assert payload["report_markdown"] == "# Technical decision report"
 
     task = payload["tasks"][0]
 
@@ -342,3 +350,62 @@ def test_replay_endpoint_only_reads_stored_state():
 
     assert response.status_code == 200
     assert store.get_calls == 1
+
+
+def test_replay_projects_legacy_report_without_mutating_audit_state():
+    legacy_report = """# Legacy report
+
+Recompute affected modules: decision_comparison.
+counterfactual dependency path
+No evidence signals exist for A x reliability.
+"""
+    state = SummaryState(
+        research_topic="Choose A or B",
+        structured_report=legacy_report,
+        decision_case=DecisionCase(
+            decision_id="dec_legacy",
+            question="Choose A or B",
+            candidates=[
+                Candidate(candidate_id="cand_a", name="A"),
+                Candidate(candidate_id="cand_b", name="B"),
+            ],
+        ),
+        decision_readiness=DecisionReadiness(
+            decision_id="dec_legacy",
+            overall_score=0.0,
+            status="INSUFFICIENT_EVIDENCE",
+            criterion_coverage=0.0,
+            evidence_quality=0.0,
+            applicability=0.0,
+            agreement_score=0.0,
+            decision_margin=0.0,
+            blocking_reasons=[
+                "candidate eligibility remains unresolved",
+            ],
+        ),
+    )
+    before = deepcopy(state)
+    stored_report_hash = sha256(
+        state.structured_report.encode("utf-8")
+    ).hexdigest()
+
+    app = create_app()
+    app.state.research_store = FakeResearchStore(state)
+    response = TestClient(app).get(
+        "/research/research_test/replay"
+    )
+
+    assert response.status_code == 200
+    report = response.json()["report_markdown"]
+    for phrase in (
+        "Recompute affected modules",
+        "counterfactual dependency path",
+        "No evidence signals exist",
+        "candidate eligibility remains unresolved",
+    ):
+        assert phrase not in report
+    assert "推荐：暂不形成确定推荐" in report
+    assert state == before
+    assert sha256(
+        state.structured_report.encode("utf-8")
+    ).hexdigest() == stored_report_hash

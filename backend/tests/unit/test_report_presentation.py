@@ -4,6 +4,7 @@ from models import (
     Constraint,
     DecisionCase,
     DecisionComparison,
+    DecisionCriterion,
     DecisionEvaluation,
     DecisionReadiness,
     DecisionReevaluationTrigger,
@@ -153,6 +154,19 @@ def test_user_report_rejects_structured_state_header():
     )
 
 
+def test_user_report_rejects_debug_presentation_phrases():
+    for phrase in (
+        "has insufficient confidence",
+        "has insufficient coverage",
+        "No evidence signals exist",
+        "candidate eligibility remains unresolved",
+    ):
+        assert not validate_user_report(
+            technical_report(phrase),
+            decision_state(),
+        )
+
+
 def test_user_report_requires_section_order():
     sections = list(TECHNICAL_DECISION_SECTIONS)
     sections[2], sections[3] = sections[3], sections[2]
@@ -231,11 +245,36 @@ def test_fallback_report_preserves_unknown():
     assert "不满足" not in constraint_line
 
 
+def test_comparison_absence_is_distinct_from_satisfied_constraint():
+    state = decision_state(constraint_status="SATISFIED")
+    state.decision_case.criteria = [
+        DecisionCriterion(
+            criterion_id="crit_transactions",
+            name="事务一致性能力",
+            weight=1.0,
+        )
+    ]
+
+    report = build_fallback_user_report(state)
+    comparison = report.split(
+        TECHNICAL_DECISION_SECTIONS[1], 1
+    )[1].split(TECHNICAL_DECISION_SECTIONS[2], 1)[0]
+    constraints = report.split(
+        TECHNICAL_DECISION_SECTIONS[2], 1
+    )[1].split(TECHNICAL_DECISION_SECTIONS[3], 1)[0]
+
+    assert "独立候选比较状态" in comparison
+    assert "— 暂无独立比较结论" in comparison
+    assert "未验证" not in comparison
+    assert "硬约束是否满足" in comparison
+    assert "| 满足 |" in constraints
+
+
 def test_fallback_report_does_not_invent_recommendation():
     report = build_fallback_user_report(decision_state())
 
-    assert "PostgreSQL 综合表现靠前" in report
-    assert "系统尚未形成确定推荐" in report
+    assert "推荐：暂不形成确定推荐" in report
+    assert "综合表现靠前" not in report
     assert "正式建议：" not in report
 
 
@@ -259,7 +298,8 @@ def test_fallback_report_does_not_expose_reevaluation_debug_rationale():
     report = build_fallback_user_report(state)
 
     assert "团队主要熟悉 PostgreSQL" in report
-    assert "发生变化，应重新评估" in report
+    assert "发生变化" in report
+    assert "应重新评估" in report
     assert "Recompute affected modules" not in report
     assert "counterfactual dependency path" not in report
 

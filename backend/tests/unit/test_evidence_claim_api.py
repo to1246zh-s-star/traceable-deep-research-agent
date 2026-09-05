@@ -1,7 +1,16 @@
 from fastapi.testclient import TestClient
 
 from main import create_app
-from models import Claim, Evidence, ExecutionTrace, SummaryState
+from models import (
+    Claim,
+    Evidence,
+    EvidenceApplicability,
+    EvidenceAssessment,
+    EvidenceQuality,
+    ExecutionTrace,
+    SourceQuality,
+    SummaryState,
+)
 
 
 class FakeResearchStore:
@@ -47,12 +56,36 @@ def build_state():
         execution_traces=[trace],
         evidence_items=[evidence],
         claims=[claim],
+        evidence_assessments=[
+            EvidenceAssessment(
+                evidence_id=evidence.evidence_id,
+                decision_id="dec_test",
+                source_quality=SourceQuality(
+                    evidence_id=evidence.evidence_id,
+                    source_type="official_docs",
+                    confidence=0.95,
+                    authority_type="OFFICIAL_DOCUMENTATION",
+                    authority_level="HIGH",
+                ),
+                evidence_quality=EvidenceQuality(
+                    evidence_id=evidence.evidence_id,
+                    quality_score=0.9,
+                    completeness=0.8,
+                ),
+                applicability=EvidenceApplicability(
+                    evidence_id=evidence.evidence_id,
+                    decision_id="dec_test",
+                    applicability_score=0.85,
+                ),
+                overall_score=0.88,
+            )
+        ],
     )
 
 
-def build_client():
+def build_client(state=None):
     app = create_app()
-    app.state.research_store = FakeResearchStore(build_state())
+    app.state.research_store = FakeResearchStore(state or build_state())
     return TestClient(app)
 
 
@@ -73,6 +106,9 @@ def test_list_research_evidence():
     assert evidence["evidence_id"] == "evi_test"
     assert evidence["trace_id"] == "trace_test"
     assert evidence["source_rank"] == 1
+    assert evidence["source_type"] == "official_docs"
+    assert evidence["authority_type"] == "OFFICIAL_DOCUMENTATION"
+    assert evidence["authority_level"] == "HIGH"
 
 
 def test_get_research_evidence():
@@ -118,6 +154,23 @@ def test_get_research_claim_resolves_supporting_evidence():
 
     assert len(payload["evidence"]) == 1
     assert payload["evidence"][0]["evidence_id"] == "evi_test"
+    assert payload["evidence"][0]["authority_type"] == (
+        "OFFICIAL_DOCUMENTATION"
+    )
+
+
+def test_unknown_authority_is_explicit_when_assessment_is_missing():
+    state = build_state()
+    state.evidence_assessments = []
+    client = build_client(state)
+
+    evidence = client.get(
+        "/research/research_test/evidence/evi_test"
+    ).json()["evidence"]
+
+    assert evidence["source_type"] == "UNKNOWN"
+    assert evidence["authority_type"] == "UNKNOWN"
+    assert evidence["authority_level"] == "UNKNOWN"
 
 
 def test_unknown_evidence_and_claim_return_404():

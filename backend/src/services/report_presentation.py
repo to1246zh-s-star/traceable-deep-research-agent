@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 from models import SummaryState
 from services.decision_reporting import (
@@ -33,6 +34,16 @@ FORBIDDEN_INTERNAL_MARKERS = (
     "RECOMPUTE AFFECTED MODULES",
     "COUNTERFACTUAL DEPENDENCY PATH",
     "CURRENT DECISION INTELLIGENCE DEPENDS",
+    "HAS INSUFFICIENT CONFIDENCE",
+    "HAS INSUFFICIENT COVERAGE",
+    "NO EVIDENCE SIGNALS EXIST",
+    "CANDIDATE ELIGIBILITY REMAINS UNRESOLVED",
+    "integration_assessment",
+    "decision_comparison",
+    "decision_sensitivity",
+    "recommendation_robustness",
+    "research_gap_impact",
+    "expected_decision_impact",
     "candidate_id",
     "criterion_id",
     "constraint_id",
@@ -131,12 +142,24 @@ def validate_user_report(
     return headings == list(TECHNICAL_DECISION_SECTIONS)
 
 
-def build_fallback_user_report(state: SummaryState) -> str:
-    """Project persisted state into a deterministic user-facing report."""
+def render_user_facing_report(state: SummaryState) -> str:
+    """Project authoritative state into the current presentation contract."""
     if is_technical_decision_task(state):
         return _build_technical_decision_fallback(state)
 
+    stored_report = getattr(state, "structured_report", None)
+    if (
+        isinstance(stored_report, str)
+        and validate_user_report(stored_report, state)
+    ):
+        return stored_report.strip()
+
     return _build_generic_research_fallback(state)
+
+
+def build_fallback_user_report(state: SummaryState) -> str:
+    """Backward-compatible name for the deterministic report projection."""
+    return render_user_facing_report(state)
 
 
 def _build_technical_decision_fallback(state: SummaryState) -> str:
@@ -198,27 +221,32 @@ def _recommendation_summary(
         getattr(state.decision_readiness, "status", "UNKNOWN") or "UNKNOWN"
     ).upper()
 
+    status_labels = {
+        "READY": "已就绪",
+        "INSUFFICIENT_EVIDENCE": "证据不足",
+        "NOT_READY": "尚未就绪",
+    }
+    status_label = status_labels.get(readiness_status, "待确认")
+
     if recommendation and readiness_status == "READY":
-        return f"正式建议：{recommendation}"
+        return f"决策状态：{status_label}\n\n推荐：{recommendation}"
 
     if recommendation:
         return (
-            f"当前记录的建议为“{recommendation}”，但决策状态尚未就绪，"
-            "因此该建议仅作为暂定方向。"
+            f"决策状态：{status_label}\n\n"
+            "推荐：暂不形成确定推荐\n\n"
+            f"当前结构化状态记录的暂定方向为“{recommendation}”，"
+            "但在决策就绪前不能将其作为正式推荐。"
         )
 
-    ranked_names = _known_candidate_names(
-        getattr(state.decision_comparison, "ranked_candidate_ids", []),
-        candidate_names,
+    names = [name for name in candidate_names.values() if name]
+    candidate_scope = "、".join(names[:3]) or "各候选方案"
+    return (
+        f"决策状态：{status_label}\n\n"
+        "推荐：暂不形成确定推荐\n\n"
+        "当前关键约束与评价维度仍存在证据覆盖不足，因此系统保留未知项，"
+        f"不基于缺失证据强行选择{candidate_scope}。"
     )
-
-    if ranked_names:
-        return (
-            f"当前证据下 {ranked_names[0]} 综合表现靠前，但系统尚未形成"
-            "确定推荐；比较结果不等于正式建议。"
-        )
-
-    return "系统尚未形成确定推荐，现有信息仅支持继续比较与验证。"
 
 
 def _comparison_projection(
@@ -228,48 +256,61 @@ def _comparison_projection(
     decision = state.decision_case
     assert decision is not None
 
-    lines = [
-        f"- {candidate_names[candidate.candidate_id]}"
-        + (
-            f"：{description}"
-            if (description := _safe_text(candidate.description))
-            else ""
+    criteria = sorted(
+        enumerate(decision.criteria),
+        key=lambda item: (-float(item[1].weight), item[0]),
+    )[:4]
+    candidates = list(decision.candidates)[:4]
+
+    if not criteria or not candidates:
+        return [
+            f"- {candidate_names[candidate.candidate_id]}"
+            for candidate in candidates
+        ]
+
+    directions_by_pair: dict[tuple[str, str], set[str]] = {}
+    for signal in state.evidence_signals:
+        key = (signal.candidate_id, signal.criterion_id)
+        directions_by_pair.setdefault(key, set()).add(
+            str(signal.direction or "").lower()
         )
-        for candidate in decision.candidates
+
+    criterion_values = [item[1] for item in criteria]
+    lines = [
+        "以下为评价维度的独立候选比较状态；硬约束是否满足以"
+        "“硬约束检查”章节为准。",
+        "",
+        "| 候选方案 | "
+        + " | ".join(
+            _table_cell(_safe_text(criterion.name) or "未命名维度")
+            for criterion in criterion_values
+        )
+        + " |",
+        "|---|" + "---|" * len(criterion_values),
     ]
 
-    comparison = state.decision_comparison
-    ranked_names = _known_candidate_names(
-        getattr(comparison, "ranked_candidate_ids", []),
-        candidate_names,
-    )
-    if ranked_names:
+    for candidate in candidates:
+        cells = [
+            _signal_presentation(
+                directions_by_pair.get(
+                    (candidate.candidate_id, criterion.criterion_id),
+                    set(),
+                )
+            )
+            for criterion in criterion_values
+        ]
         lines.append(
-            "- 当前确定性比较顺序："
-            + " > ".join(ranked_names)
-            + "。该顺序仅描述比较结果。"
+            "| "
+            + _table_cell(candidate_names[candidate.candidate_id])
+            + " | "
+            + " | ".join(cells)
+            + " |"
         )
 
-    unresolved_names = _known_candidate_names(
-        getattr(comparison, "unresolved_candidate_ids", []),
-        candidate_names,
+    lines.append(
+        "\n> ✅ / ⚠️ 仅表示已有结构化候选比较信号；— 表示当前尚未形成"
+        "独立的候选比较结论。硬约束是否满足以“硬约束检查”章节为准。"
     )
-    if unresolved_names:
-        lines.append(
-            "- 尚待验证的候选方案：" + "、".join(unresolved_names) + "。"
-        )
-
-    excluded_names = _known_candidate_names(
-        getattr(comparison, "excluded_candidate_ids", []),
-        candidate_names,
-    )
-    if excluded_names:
-        lines.append(
-            "- 已由现有决策逻辑排除的候选方案："
-            + "、".join(excluded_names)
-            + "。"
-        )
-
     return lines
 
 
@@ -283,7 +324,7 @@ def _constraint_projection(
         "UNSATISFIED": "不满足",
         "UNKNOWN": "未知（当前证据不足，尚待验证）",
     }
-    lines: list[str] = []
+    rows: list[str] = []
 
     for row in _canonical_constraint_statuses(state):
         candidate_name = candidate_names.get(row["candidate_id"])
@@ -296,14 +337,27 @@ def _constraint_projection(
             status,
             "未知（当前证据不足，尚待验证）",
         )
-        lines.append(f"- {candidate_name}｜{constraint_name}：{label}")
+        rows.append(
+            f"| {_table_cell(candidate_name)} | "
+            f"{_table_cell(constraint_name)} | {label} |"
+        )
 
-    return lines
+    if not rows:
+        return []
+
+    return [
+        "| 候选方案 | 硬约束 | 当前状态 |",
+        "|---|---|---|",
+        *rows,
+    ]
 
 
 def _evidence_projection(state: SummaryState) -> list[str]:
     assessments = list(state.evidence_assessments or [])
-    lines = [f"- 已评估证据 {len(assessments)} 项。"]
+    lines = [
+        f"- 当前保留 {len(state.evidence_items)} 项 Evidence，"
+        f"并形成 {len(state.claims)} 个可追踪 Claim。"
+    ]
 
     authority_labels = {
         "OFFICIAL_DOCUMENTATION": "官方文档",
@@ -330,23 +384,15 @@ def _evidence_projection(state: SummaryState) -> list[str]:
         }
     )
     if authorities:
-        lines.append("- 来源覆盖：" + "、".join(authorities) + "。")
+        visible = authorities[:5]
+        suffix = "等" if len(authorities) > len(visible) else ""
+        lines.append(
+            "- 来源类型覆盖：" + "、".join(visible) + suffix + "。"
+        )
     elif assessments:
         lines.append("- 来源权威类型尚未确认。")
 
-    grounded_claims = []
-    for claim in state.atomic_claims:
-        if str(claim.grounding_status).lower() != "grounded":
-            continue
-        text = _safe_text(claim.text)
-        if text:
-            grounded_claims.append(text)
-        if len(grounded_claims) == 3:
-            break
-
-    lines.extend(f"- 已核验陈述：{text}" for text in grounded_claims)
-
-    if not assessments and not grounded_claims:
+    if not assessments:
         lines.append("- 当前证据不足，尚不能据此扩大结论。")
 
     if any(
@@ -362,24 +408,69 @@ def _evidence_projection(state: SummaryState) -> list[str]:
 
 
 def _risk_projection(state: SummaryState) -> list[str]:
+    decision = state.decision_case
+    assert decision is not None
+    candidate_names = {
+        candidate.candidate_id: _safe_text(candidate.name)
+        or f"候选方案 {index}"
+        for index, candidate in enumerate(decision.candidates, start=1)
+    }
+    criterion_names = {
+        criterion.criterion_id: _safe_text(criterion.name)
+        or f"评价维度 {index}"
+        for index, criterion in enumerate(decision.criteria, start=1)
+    }
     lines: list[str] = []
-    readiness = state.decision_readiness
-
-    for reason in getattr(readiness, "blocking_reasons", []) or []:
-        if text := _safe_text(reason):
-            lines.append(f"- 决策阻碍：{text}")
-
     analysis = state.research_analysis
+    uncovered = _ordered_unique(
+        criterion_names.get(coverage.criterion_id)
+        for coverage in getattr(analysis, "coverages", []) or []
+        if coverage.signal_count == 0
+    )
+    if uncovered:
+        lines.append(
+            "- 独立候选比较层面的证据覆盖不足，涉及关键维度："
+            + "、".join(uncovered[:4])
+            + ("等" if len(uncovered) > 4 else "")
+            + "。"
+        )
+
+    gaps_by_candidate: dict[str, list[str]] = {}
     for gap in getattr(analysis, "research_gaps", []) or []:
         if getattr(gap, "status", "open") == "resolved":
             continue
-        if text := _safe_text(getattr(gap, "description", None)):
-            lines.append(f"- 尚待验证：{text}")
+        candidate_name = candidate_names.get(gap.candidate_id)
+        criterion_name = criterion_names.get(gap.criterion_id)
+        if candidate_name and criterion_name:
+            gaps_by_candidate.setdefault(candidate_name, []).append(
+                criterion_name
+            )
 
-    if not lines:
-        lines.append("- 当前未记录明确风险；未覆盖事项仍应视为未知，而非已满足。")
+    for candidate_name, names in list(gaps_by_candidate.items())[:2]:
+        unique_names = _ordered_unique(names)
+        lines.append(
+            f"- 在独立候选比较层面，{candidate_name} 的"
+            + "、".join(unique_names[:4])
+            + ("等维度" if len(unique_names) > 4 else "方面")
+            + "仍缺少足够的结构化证据信号。"
+        )
 
-    return lines
+    team_context = [
+        text
+        for value in getattr(state.technical_context, "team_capabilities", [])
+        if (text := _safe_text(value))
+    ]
+    if team_context:
+        lines.append(
+            f"- 团队背景“{team_context[0]}”来自用户提供的技术上下文，"
+            "不属于外部验证证据。"
+        )
+
+    lines.append(
+        "- 未知项仅表示当前无法验证，不能据此判断为满足或不满足。"
+    )
+
+    return lines[:5]
 
 
 def _reversal_projection(state: SummaryState) -> list[str]:
@@ -390,7 +481,23 @@ def _reversal_projection(state: SummaryState) -> list[str]:
         criterion.criterion_id: _safe_text(criterion.name)
         for criterion in decision.criteria
     }
-    lines: list[str] = []
+    field_labels = {
+        "team_capabilities": "团队能力或技术栈",
+        "scale_requirements": "数据规模、并发或水平扩展要求",
+        "performance_requirements": "性能与复杂查询要求",
+        "reliability_requirements": "一致性与可靠性要求",
+        "deployment_environment": "部署环境",
+        "infrastructure": "基础设施条件",
+        "integration_requirements": "集成要求",
+        "operational_constraints": "运维约束",
+        "security_constraints": "安全约束",
+        "compliance_constraints": "合规约束",
+        "migration_constraints": "迁移约束",
+        "budget_constraints": "预算约束",
+    }
+    context_values: dict[str, list[str]] = {}
+    priority_names: list[str] = []
+    semantic_order: list[tuple[str, str]] = []
 
     for trigger in state.decision_reevaluation_triggers:
         trigger_type = str(
@@ -399,14 +506,18 @@ def _reversal_projection(state: SummaryState) -> list[str]:
         ).upper()
 
         if trigger_type == "TECHNICAL_CONTEXT_CHANGE":
-            source_value = _safe_text(
-                getattr(trigger, "source_value", None)
-            )
-            if source_value:
-                lines.append(
-                    "- 若以下已知条件发生变化，应重新评估："
-                    f"{source_value}。"
-                )
+            source_field = str(getattr(trigger, "source_field", "") or "")
+            if source_field not in field_labels:
+                continue
+            key = ("context", source_field)
+            if key not in semantic_order:
+                semantic_order.append(key)
+            values = context_values.setdefault(source_field, [])
+            if (
+                (source_value := _safe_text(getattr(trigger, "source_value", None)))
+                and source_value not in values
+            ):
+                values.append(source_value)
 
         elif trigger_type == "CRITERION_PRIORITY_CHANGE":
             names = [
@@ -418,20 +529,43 @@ def _reversal_projection(state: SummaryState) -> list[str]:
                 )
                 if criterion_names.get(criterion_id)
             ]
-            if names:
-                lines.append(
-                    "- 若“"
-                    + "、".join(names)
-                    + "”的优先级发生变化，应重新评估比较结论。"
-                )
+            for name in names:
+                if name not in priority_names:
+                    priority_names.append(name)
+            key = ("priority", "criteria")
+            if names and key not in semantic_order:
+                semantic_order.append(key)
 
-    lines = list(dict.fromkeys(lines))
+    lines: list[str] = []
+    for kind, key in semantic_order:
+        if len(lines) >= 5:
+            break
+
+        if kind == "priority":
+            lines.append(
+                "- 若“"
+                + "、".join(priority_names[:4])
+                + ("等" if len(priority_names) > 4 else "")
+                + "”的优先级发生变化，应重新评估候选比较。"
+            )
+            continue
+
+        values = context_values.get(key, [])
+        current = (
+            "（当前记录：" + "；".join(values[:2]) + "）"
+            if values
+            else ""
+        )
+        lines.append(
+            f"- 若{field_labels[key]}发生变化{current}，应重新评估。"
+        )
 
     if lines:
         if not _safe_text(decision.recommendation):
             return [
-                "- 当前尚无正式推荐；以下内容是重新评估条件，"
+                "当前尚无正式推荐；以下内容是重新评估条件，"
                 "不是既定推荐的反转结论。",
+                "",
                 *lines,
             ]
 
@@ -488,18 +622,28 @@ def _build_generic_research_fallback(state: SummaryState) -> str:
     return "\n".join(lines).strip()
 
 
-def _known_candidate_names(
-    candidate_ids: object,
-    candidate_names: dict[str, str],
-) -> list[str]:
-    if not isinstance(candidate_ids, (list, tuple)):
-        return []
+def _signal_presentation(directions: set[str]) -> str:
+    if not directions or directions <= {"neutral", ""}:
+        return "— 暂无独立比较结论"
+    if "positive" in directions and "negative" in directions:
+        return "⚠️ 证据冲突"
+    if "positive" in directions:
+        return "✅ 有支持证据"
+    if "negative" in directions:
+        return "⚠️ 有反向证据"
+    return "— 暂无独立比较结论"
 
-    return [
-        candidate_names[candidate_id]
-        for candidate_id in candidate_ids
-        if candidate_id in candidate_names
-    ]
+
+def _table_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _ordered_unique(values: Iterable[str | None]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
 
 
 def _safe_text(value: object) -> str | None:

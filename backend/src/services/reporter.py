@@ -17,8 +17,8 @@ from services.llm_runtime_circuit import (
 )
 from services.report_context import select_report_context
 from services.report_presentation import (
-    build_fallback_user_report,
     build_user_report_contract,
+    render_user_facing_report,
     validate_user_report,
 )
 from services.runtime_notices import record_runtime_notice
@@ -184,5 +184,5 @@ class ReportingService:
         This fallback only summarizes already persisted research state.
         It must not invent candidate scores, evidence, or recommendations.
         """
-        return build_fallback_user_report(state)
+        return render_user_facing_report(state)
 

@@ -157,6 +157,9 @@ export interface EvidenceResponse {
   snippet: string | null;
   content: string | null;
   source_rank: number | null;
+  source_type: string;
+  authority_type: string;
+  authority_level: string;
   created_at: string;
 }
 
@@ -299,9 +302,26 @@ export interface ResearchReplayTaskResponse {
   intent: string;
   query: string;
   status: string;
+  summary: string | null;
+  summary_status: "available" | "failed" | "unavailable";
+  summary_error_type: string | null;
+  evidence_count: number;
+  sources: ResearchReplayTaskSourceResponse[];
+  notices: string[];
+  error_types: string[];
   trace_ids: string[];
   claim_ids: string[];
   evidence_ids: string[];
+}
+
+export interface ResearchReplayTaskSourceResponse {
+  source_title: string | null;
+  source_url: string | null;
+  backend: string;
+  source_rank: number | null;
+  source_type: string;
+  authority_type: string;
+  authority_level: string;
 }
 
 export interface ResearchReplayEventResponse {
@@ -415,6 +435,8 @@ export interface AdaptiveResearchIterationResponse {
   decision_id: string;
   iteration_number: number;
   status: string;
+  task_ids?: number[];
+  gap_ids?: string[];
 
   retrieval_yield_status?: string;
   new_evidence_count?: number;
@@ -638,6 +660,7 @@ export interface ResearchReplayResponse {
   evidence_count: number;
   tasks: ResearchReplayTaskResponse[];
   timeline: ResearchReplayEventResponse[];
+  report_markdown: string | null;
   runtime_notices?: RuntimeNoticeResponse[];
   llm_runtime_circuit?: LlmRuntimeCircuitResponse;
   lineage: ResearchLineageResponse | null;

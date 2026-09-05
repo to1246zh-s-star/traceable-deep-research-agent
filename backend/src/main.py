@@ -27,6 +27,7 @@ from services.execution_trace import ExecutionTraceService
 from services.decision_version_diff import compare_research_versions
 from services.decision_evolution import build_decision_evolution
 from services.research_store import SQLiteResearchStore
+from services.report_presentation import render_user_facing_report
 from services.deployment_config import (
     safe_endpoint_for_log,
     validate_deployment_config,
@@ -352,6 +353,9 @@ class EvidenceResponse(BaseModel):
     snippet: str | None = None
     content: str | None = None
     source_rank: int | None = None
+    source_type: str = "UNKNOWN"
+    authority_type: str = "UNKNOWN"
+    authority_level: str = "UNKNOWN"
     created_at: str
 
 
@@ -417,6 +421,18 @@ class TraceEventsResponse(BaseModel):
     trace_id: str
     events: list[ExecutionEventResponse] = Field(default_factory=list)
 
+class ResearchReplayTaskSourceResponse(BaseModel):
+    """Source metadata linked to one persisted research task."""
+
+    source_title: str | None = None
+    source_url: str | None = None
+    backend: str
+    source_rank: int | None = None
+    source_type: str = "UNKNOWN"
+    authority_type: str = "UNKNOWN"
+    authority_level: str = "UNKNOWN"
+
+
 class ResearchReplayTaskResponse(BaseModel):
     """One research task in replay order."""
 
@@ -425,6 +441,13 @@ class ResearchReplayTaskResponse(BaseModel):
     intent: str
     query: str
     status: str
+    summary: str | None = None
+    summary_status: str
+    summary_error_type: str | None = None
+    evidence_count: int = 0
+    sources: list[ResearchReplayTaskSourceResponse] = Field(
+        default_factory=list
+    )
 
     notices: list[str] = Field(default_factory=list)
     error_types: list[str] = Field(default_factory=list)
@@ -458,6 +481,7 @@ class ResearchReplayResponse(BaseModel):
 
     tasks: list[ResearchReplayTaskResponse] = Field(default_factory=list)
     timeline: list[ResearchReplayEventResponse] = Field(default_factory=list)
+    report_markdown: str | None = None
 
     decision: dict[str, Any] | None = None
 
@@ -559,7 +583,19 @@ def _serialize_decision_intelligence(
     }
 
 
-def _serialize_evidence(evidence: Any) -> dict[str, Any]:
+def _index_evidence_assessments(state: Any) -> dict[str, Any]:
+    return {
+        assessment.evidence_id: assessment
+        for assessment in getattr(state, "evidence_assessments", [])
+    }
+
+
+def _serialize_evidence(
+    evidence: Any,
+    assessment: Any | None = None,
+) -> dict[str, Any]:
+    source_quality = getattr(assessment, "source_quality", None)
+
     return {
         "evidence_id": evidence.evidence_id,
         "task_id": evidence.task_id,
@@ -571,7 +607,35 @@ def _serialize_evidence(evidence: Any) -> dict[str, Any]:
         "snippet": evidence.snippet,
         "content": evidence.content,
         "source_rank": evidence.source_rank,
+        "source_type": (
+            getattr(source_quality, "source_type", None) or "UNKNOWN"
+        ),
+        "authority_type": (
+            getattr(source_quality, "authority_type", None) or "UNKNOWN"
+        ),
+        "authority_level": (
+            getattr(source_quality, "authority_level", None) or "UNKNOWN"
+        ),
         "created_at": evidence.created_at,
+    }
+
+
+def _serialize_replay_task_source(
+    evidence: Any,
+    assessment: Any | None = None,
+) -> dict[str, Any]:
+    serialized = _serialize_evidence(evidence, assessment)
+    return {
+        key: serialized[key]
+        for key in (
+            "source_title",
+            "source_url",
+            "backend",
+            "source_rank",
+            "source_type",
+            "authority_type",
+            "authority_level",
+        )
     }
 
 
@@ -637,6 +701,8 @@ def _build_research_replay(
             [],
         ).append(evidence)
 
+    evidence_assessments = _index_evidence_assessments(state)
+
     tasks: list[dict[str, Any]] = []
 
     for task in state.todo_items:
@@ -652,6 +718,25 @@ def _build_research_replay(
             task.id,
             [],
         )
+        summary_error_type = next(
+            (
+                notice.split(":", 1)[1] or "unknown"
+                for notice in task.notices
+                if notice.startswith("summarization_failed:")
+            ),
+            None,
+        )
+        summary = (
+            task.summary.strip()
+            if isinstance(task.summary, str) and task.summary.strip()
+            else None
+        )
+        if summary_error_type is not None:
+            summary_status = "failed"
+        elif summary is not None:
+            summary_status = "available"
+        else:
+            summary_status = "unavailable"
 
         tasks.append(
             {
@@ -660,6 +745,17 @@ def _build_research_replay(
                 "intent": task.intent,
                 "query": task.query,
                 "status": task.status,
+                "summary": summary,
+                "summary_status": summary_status,
+                "summary_error_type": summary_error_type,
+                "evidence_count": len(task_evidence),
+                "sources": [
+                    _serialize_replay_task_source(
+                        evidence,
+                        evidence_assessments.get(evidence.evidence_id),
+                    )
+                    for evidence in task_evidence[:5]
+                ],
                 "notices": list(
                     task.notices
                 ),
@@ -781,6 +877,7 @@ def _build_research_replay(
         "evidence_count": len(state.evidence_items),
         "tasks": tasks,
         "timeline": timeline,
+        "report_markdown": render_user_facing_report(state),
         "decision": _serialize_decision_intelligence(
             state
         ),
@@ -1044,10 +1141,15 @@ def create_app() -> FastAPI:
                 detail="Research run not found",
             )
 
+        assessments = _index_evidence_assessments(state)
+
         return {
             "research_id": research_id,
             "evidence": [
-                _serialize_evidence(evidence)
+                _serialize_evidence(
+                    evidence,
+                    assessments.get(evidence.evidence_id),
+                )
                 for evidence in state.evidence_items
             ],
         }
@@ -1085,9 +1187,14 @@ def create_app() -> FastAPI:
                 detail="Evidence not found",
             )
 
+        assessments = _index_evidence_assessments(state)
+
         return {
             "research_id": research_id,
-            "evidence": _serialize_evidence(evidence),
+            "evidence": _serialize_evidence(
+                evidence,
+                assessments.get(evidence.evidence_id),
+            ),
         }
 
     @app.get(
@@ -1157,11 +1264,16 @@ def create_app() -> FastAPI:
             if evidence_id in evidence_by_id
         ]
 
+        assessments = _index_evidence_assessments(state)
+
         return {
             "research_id": research_id,
             "claim": _serialize_claim(claim),
             "evidence": [
-                _serialize_evidence(evidence)
+                _serialize_evidence(
+                    evidence,
+                    assessments.get(evidence.evidence_id),
+                )
                 for evidence in supporting_evidence
             ],
         }

@@ -18,8 +18,8 @@
             </svg>
           </div>
           <div>
-            <h1>深度研究助手</h1>
-            <p>结合多轮智能检索与总结，实时呈现洞见与引用。</p>
+            <h1>Traceable Deep Research Agent</h1>
+            <p>可追溯的复杂技术研究与决策 Agent</p>
           </div>
         </header>
 
@@ -75,6 +75,49 @@
           </div>
         </form>
 
+        <section
+          class="persisted-loader"
+          aria-labelledby="persisted-loader-title"
+        >
+          <div class="persisted-loader-heading">
+            <div>
+              <h2 id="persisted-loader-title">加载已有研究</h2>
+              <p>按 Research ID 只读恢复已持久化的研究与审计记录。</p>
+            </div>
+            <span class="read-only-badge">Read only</span>
+          </div>
+
+          <form
+            class="persisted-loader-form"
+            @submit.prevent="loadExistingResearch"
+          >
+            <input
+              id="persisted-research-id"
+              v-model="existingResearchId"
+              type="text"
+              aria-label="Research ID"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="research_..."
+            />
+            <button
+              type="submit"
+              class="secondary-btn"
+              :disabled="existingResearchLoading || loading"
+            >
+              {{ existingResearchLoading ? "加载中..." : "加载" }}
+            </button>
+          </form>
+
+          <p
+            v-if="existingResearchError"
+            class="error-chip"
+            role="alert"
+          >
+            {{ existingResearchError }}
+          </p>
+        </section>
+
         <p v-if="error" class="error-chip">
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path
@@ -100,7 +143,10 @@
             </svg>
             返回
           </button>
-          <h2>🔍 深度研究助手</h2>
+          <div class="sidebar-brand">
+            <h2>🔍 Traceable Deep Research Agent</h2>
+            <p>可追溯的复杂技术研究与决策 Agent</p>
+          </div>
         </div>
 
         <div class="research-info">
@@ -117,9 +163,9 @@
           <div class="info-item" v-if="totalTasks > 0">
             <label>研究进度</label>
             <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: `${(completedTasks / totalTasks) * 100}%` }"></div>
+              <div class="progress-fill" :style="{ width: `${(executedTasks / totalTasks) * 100}%` }"></div>
             </div>
-            <p class="progress-text">{{ completedTasks }} / {{ totalTasks }} 任务完成</p>
+            <p class="progress-text">{{ taskProgressText }}</p>
           </div>
         </div>
 
@@ -140,23 +186,20 @@
       >
         <header class="status-bar">
           <div class="status-main">
+            <strong class="current-research-label">当前研究</strong>
             <div class="status-chip" :class="{ active: loading }">
               <span class="dot"></span>
               {{ loading ? "研究进行中" : "研究流程完成" }}
             </div>
             <span class="status-meta">
-              任务进度：{{ completedTasks }} / {{ totalTasks || todoTasks.length || 1 }}
-              · 阶段记录 {{ progressLogs.length }} 条
+              {{ totalTasks || todoTasks.length }} 个任务
+              · {{ researchReplay?.evidence_count || 0 }} 条 Evidence
+              · {{ researchReplay?.claim_count || 0 }} 个 Claims
             </span>
-          </div>
-          <div class="status-controls">
-            <button class="secondary-btn" @click="logsCollapsed = !logsCollapsed">
-              {{ logsCollapsed ? "展开流程" : "收起流程" }}
-            </button>
           </div>
         </header>
 
-        <div class="timeline-wrapper" v-show="!logsCollapsed && progressLogs.length">
+        <div class="timeline-wrapper" v-show="loading && progressLogs.length">
           <transition-group name="timeline" tag="ul" class="timeline">
             <li v-for="(log, index) in progressLogs" :key="`${log}-${index}`">
               <span class="timeline-node"></span>
@@ -165,6 +208,51 @@
           </transition-group>
         </div>
 
+        <details
+          v-if="researchReplay"
+          class="evidence-overview"
+        >
+          <summary>
+            <span>证据与来源</span>
+            <strong>
+              {{ researchReplay.evidence_count }} 条 Evidence /
+              {{ researchReplay.claim_count }} 个 Claims
+            </strong>
+          </summary>
+          <div class="evidence-overview-content">
+            <p>
+              来源权威类型：{{ evidenceAuthoritySummary }}
+            </p>
+            <p>
+              完整 Claim、Evidence、Authority、URL 与 Trace
+              可在“高级详情与审计信息”中查看。
+            </p>
+          </div>
+        </details>
+
+        <details
+          ref="advancedAuditRef"
+          v-if="researchId"
+          class="advanced-audit"
+        >
+          <summary>
+            <span>高级详情与审计信息</span>
+            <small>Replay · Evidence · Trace · Version</small>
+          </summary>
+          <div class="advanced-audit-content">
+            <section
+              v-if="progressLogs.length"
+              class="advanced-timeline"
+            >
+              <h3>研究流程</h3>
+              <ul class="timeline">
+                <li v-for="(log, index) in progressLogs" :key="`${log}-${index}`">
+                  <span class="timeline-node"></span>
+                  <p>{{ log }}</p>
+                </li>
+              </ul>
+            </section>
+
         <section
           id="research-replay"
           v-if="researchId"
@@ -172,8 +260,8 @@
         >
           <header class="replay-header">
             <div>
-              <p class="trace-eyebrow">Decision Intelligence</p>
-              <h3>Research Replay</h3>
+              <p class="trace-eyebrow">决策分析</p>
+              <h3>研究回放</h3>
               <p class="replay-description">
                 回放从研究任务、执行 Trace 到 Evidence 与 Claim 的完整研究过程。
               </p>
@@ -202,7 +290,7 @@
               <div class="replay-version-summary">
                 <div>
                   <p class="trace-eyebrow">
-                    Research Version
+                    研究版本
                   </p>
                   <strong>
                     Version
@@ -351,7 +439,7 @@
               <div class="decision-evolution-heading">
                 <div>
                   <p class="trace-eyebrow">
-                    Decision Evolution
+                    决策演进
                   </p>
 
                   <h4>
@@ -625,7 +713,7 @@
             >
               <div class="decision-panel-header">
                 <div>
-                  <p class="trace-eyebrow">Decision Intelligence</p>
+                  <p class="trace-eyebrow">决策分析</p>
                   <h4>{{ researchReplay.decision.case.question }}</h4>
                 </div>
 
@@ -690,7 +778,7 @@
               <div class="decision-grid">
                 <section class="decision-section">
                   <div class="event-section-header">
-                    <h4>Candidates</h4>
+                    <h4>候选方案</h4>
                     <span>
                       {{ researchReplay.decision.case.candidates.length }}
                     </span>
@@ -722,7 +810,7 @@
                   class="decision-section"
                 >
                   <div class="event-section-header">
-                    <h4>Ranking</h4>
+                    <h4>比较结果</h4>
                     <span>
                       {{ researchReplay.decision.comparison.status }}
                     </span>
@@ -759,7 +847,7 @@
                   class="decision-section"
                 >
                   <div class="event-section-header">
-                    <h4>Research Gaps</h4>
+                    <h4>研究缺口</h4>
                     <span>
                       {{
                         researchReplay.decision.research_analysis.research_gaps.length
@@ -798,7 +886,7 @@
                 <div class="decision-artifact-heading">
                   <div>
                     <p class="trace-eyebrow">
-                      Decision Artifact
+                      决策记录
                     </p>
 
                     <h4 id="decision-artifact-title">
@@ -860,12 +948,15 @@
 
                 <details class="decision-artifact-preview">
                   <summary>
-                    ADR Markdown Preview
+                    查看决策记录
                   </summary>
 
-                  <pre>{{
-                    researchReplay.decision_artifact.markdown
-                  }}</pre>
+                  <div
+                    class="markdown-body"
+                    v-html="renderMarkdown(
+                      researchReplay.decision_artifact.markdown
+                    )"
+                  ></div>
                 </details>
 
                 <div class="decision-artifact-actions">
@@ -877,7 +968,7 @@
                     "
                     @click="copyDecisionArtifactMarkdown"
                   >
-                    Copy Markdown
+                    复制 Markdown
                   </button>
                 </div>
               </section>
@@ -887,7 +978,7 @@
                 class="decision-stop-row"
               >
                 <div>
-                  <span>Research Status</span>
+                  <span>研究状态</span>
                   <strong>
                     {{
                       researchReplay.decision.stopping_decision.should_continue
@@ -898,7 +989,7 @@
                 </div>
 
                 <div>
-                  <span>Reason</span>
+                  <span>停止原因</span>
                   <strong>
                     {{ researchReplay.decision.stopping_decision.reason }}
                   </strong>
@@ -907,7 +998,7 @@
                 <div
                   v-if="researchReplay.decision.research_usage"
                 >
-                  <span>Adaptive Usage</span>
+                  <span>自适应用量</span>
                   <strong>
                     {{ researchReplay.decision.research_usage.iterations }}
                     iterations /
@@ -919,7 +1010,7 @@
                 <div
                   v-if="researchReplay.decision.research_usage"
                 >
-                  <span>Decision LLM Usage</span>
+                  <span>决策 LLM 用量</span>
                   <strong>
                     {{ researchReplay.decision.research_usage.semantic_llm_calls }}
                     semantic /
@@ -931,7 +1022,7 @@
                 <div
                   v-if="researchReplay.decision.adaptive_research_state"
                 >
-                  <span>Adaptive State</span>
+                  <span>自适应状态</span>
                   <strong>
                     {{ researchReplay.decision.adaptive_research_state.status }}
                   </strong>
@@ -948,10 +1039,10 @@
                 <div class="adaptive-research-heading">
                   <div>
                     <p class="trace-eyebrow">
-                      Adaptive Research
+                      自适应研究
                     </p>
                     <h4 id="adaptive-research-title">
-                      Research Journey
+                      研究迭代
                     </h4>
                     <p class="adaptive-journey-description">
                       How each follow-up research iteration changed
@@ -974,7 +1065,7 @@
                   aria-label="Adaptive research journey summary"
                 >
                   <div class="adaptive-journey-metric">
-                    <span>Iterations</span>
+                    <span>迭代次数</span>
                     <strong>
                       {{
                         researchReplay.decision
@@ -985,28 +1076,28 @@
                   </div>
 
                   <div class="adaptive-journey-metric">
-                    <span>New Evidence</span>
+                    <span>新增 Evidence</span>
                     <strong>
                       {{ adaptiveTotalEvidence() }}
                     </strong>
                   </div>
 
                   <div class="adaptive-journey-metric">
-                    <span>Novel Claims</span>
+                    <span>新增 Claim</span>
                     <strong>
                       {{ adaptiveTotalNovelClaims() }}
                     </strong>
                   </div>
 
                   <div class="adaptive-journey-metric">
-                    <span>New Coverage</span>
+                    <span>新增覆盖</span>
                     <strong>
                       {{ adaptiveTotalNewCoverage() }}
                     </strong>
                   </div>
 
                   <div class="adaptive-journey-metric">
-                    <span>Final Value</span>
+                    <span>最终研究价值</span>
                     <strong>
                       {{
                         formatResearchStatusLabel(
@@ -1017,7 +1108,7 @@
                   </div>
 
                   <div class="adaptive-journey-metric">
-                    <span>Final Reason</span>
+                    <span>停止原因</span>
                     <strong>
                       {{
                         formatResearchStatusLabel(
@@ -1113,7 +1204,7 @@
                         aria-label="Research value diagnostics"
                       >
                         <div class="adaptive-signal">
-                          <span>Retrieval Yield</span>
+                          <span>检索产出</span>
                           <strong>
                             {{
                               formatResearchStatusLabel(
@@ -1125,7 +1216,7 @@
                         </div>
 
                         <div class="adaptive-signal">
-                          <span>Evidence Saturation</span>
+                          <span>证据饱和度</span>
                           <strong>
                             {{
                               formatResearchStatusLabel(
@@ -1137,7 +1228,7 @@
                         </div>
 
                         <div class="adaptive-signal">
-                          <span>Information Gain</span>
+                          <span>信息增益</span>
                           <strong>
                             {{
                               formatResearchStatusLabel(
@@ -1250,7 +1341,7 @@
                 "
                 class="decision-blockers"
               >
-                <strong>Blocking reasons</strong>
+                <strong>阻碍因素</strong>
                 <ul>
                   <li
                     v-for="reason in researchReplay.decision.readiness.blocking_reasons"
@@ -1265,8 +1356,8 @@
             <div class="replay-layout">
               <section class="replay-task-section">
                 <div class="event-section-header">
-                  <h4>Research Tasks</h4>
-                  <span>{{ researchReplay.tasks.length }} tasks</span>
+                  <h4>研究任务（回放）</h4>
+                  <span>{{ researchReplay.tasks.length }} 个任务</span>
                 </div>
 
                 <div class="replay-task-list">
@@ -1284,7 +1375,7 @@
                         class="trace-status"
                         :class="`trace-status-${task.status}`"
                       >
-                        {{ task.status }}
+                        {{ formatTaskStatus(task.status) }}
                       </span>
                     </div>
 
@@ -1297,7 +1388,7 @@
                     <div class="replay-artifact-counts">
                       <span>{{ task.trace_ids.length }} traces</span>
                       <span>{{ task.claim_ids.length }} claims</span>
-                      <span>{{ task.evidence_ids.length }} evidence</span>
+                      <span>{{ task.evidence_ids.length }} 条 Evidence</span>
                     </div>
                   </button>
                 </div>
@@ -1305,8 +1396,8 @@
 
               <section class="replay-timeline-section">
                 <div class="event-section-header">
-                  <h4>Research Timeline</h4>
-                  <span>{{ researchReplay.timeline.length }} events</span>
+                  <h4>研究时间线</h4>
+                  <span>{{ researchReplay.timeline.length }} 个事件</span>
                 </div>
 
                 <ol
@@ -1367,14 +1458,15 @@
         </section>
 
         <section
+          ref="traceInspectorRef"
           id="trace-inspector"
           v-if="researchId"
           class="trace-inspector"
         >
           <header class="trace-inspector-header">
             <div>
-              <p class="trace-eyebrow">Execution Observability</p>
-              <h3>Trace Inspector</h3>
+              <p class="trace-eyebrow">执行观测</p>
+              <h3>执行追踪</h3>
               <p class="trace-research-id">
                 Research ID：{{ researchId }}
               </p>
@@ -1417,7 +1509,7 @@
                     class="trace-status"
                     :class="`trace-status-${trace.status}`"
                   >
-                    {{ trace.status }}
+                    {{ formatTaskStatus(trace.status) }}
                   </span>
                 </div>
 
@@ -1463,7 +1555,7 @@
                     class="trace-status"
                     :class="`trace-status-${activeTraceDetail.trace.status}`"
                   >
-                    {{ activeTraceDetail.trace.status }}
+                    {{ formatTaskStatus(activeTraceDetail.trace.status) }}
                   </span>
                 </header>
 
@@ -1531,7 +1623,7 @@
 
                 <section class="event-section">
                   <div class="event-section-header">
-                    <h4>Event Timeline</h4>
+                    <h4>事件时间线</h4>
                     <span>
                       {{ activeTraceDetail.events.length }} events
                     </span>
@@ -1624,8 +1716,8 @@
         >
           <header class="evidence-inspector-header">
             <div>
-              <p class="trace-eyebrow">Evidence Grounding</p>
-              <h3>Evidence Inspector</h3>
+              <p class="trace-eyebrow">证据溯源</p>
+              <h3>证据详情</h3>
               <p class="evidence-description">
                 查看任务结论以及支持该结论的检索证据。
               </p>
@@ -1667,9 +1759,10 @@
                   </span>
                 </div>
 
-                <p class="claim-preview">
-                  {{ claim.text }}
-                </p>
+                <div
+                  class="claim-preview markdown-body markdown-compact"
+                  v-html="renderMarkdown(claim.text)"
+                ></div>
 
                 <code>{{ claim.claim_id }}</code>
               </button>
@@ -1689,17 +1782,18 @@
                     <span class="claim-task-label">
                       Task {{ activeClaimDetail.claim.task_id }}
                     </span>
-                    <h4>Research Claim</h4>
+                    <h4>研究 Claim</h4>
                   </div>
 
                   <span class="claim-support-count">
-                    {{ activeClaimDetail.evidence.length }} supporting sources
+                    {{ activeClaimDetail.evidence.length }} 个支撑来源
                   </span>
                 </header>
 
-                <div class="claim-text">
-                  {{ activeClaimDetail.claim.text }}
-                </div>
+                <div
+                  class="claim-text markdown-body"
+                  v-html="renderMarkdown(activeClaimDetail.claim.text)"
+                ></div>
 
                 <div class="claim-provenance">
                   <div>
@@ -1725,7 +1819,7 @@
 
                 <section class="supporting-evidence-section">
                   <div class="event-section-header">
-                    <h4>Supporting Evidence</h4>
+                    <h4>支撑 Evidence</h4>
                     <span>
                       {{ activeClaimDetail.evidence.length }} sources
                     </span>
@@ -1752,6 +1846,32 @@
 
                         <code>{{ evidence.evidence_id }}</code>
                       </header>
+
+                      <div class="evidence-authority-row">
+                        <span
+                          class="evidence-backend"
+                          :title="
+                            `Backend-assessed source authority · Level: ${formatEvidenceMetadataLabel(
+                              evidence.authority_level
+                            )}`
+                          "
+                        >
+                          Authority:
+                          {{
+                            formatEvidenceMetadataLabel(
+                              evidence.authority_type
+                            )
+                          }}
+                        </span>
+                        <span class="evidence-rank">
+                          Category:
+                          {{
+                            formatEvidenceMetadataLabel(
+                              evidence.source_type
+                            )
+                          }}
+                        </span>
+                      </div>
 
                       <h5>
                         {{
@@ -1823,9 +1943,12 @@
           </p>
         </section>
 
+          </div>
+        </details>
+
         <div class="tasks-section" v-if="todoTasks.length">
           <aside class="tasks-list">
-            <h3>任务清单</h3>
+            <h3>研究任务</h3>
             <ul>
               <li
                 v-for="task in todoTasks"
@@ -1843,23 +1966,19 @@
                   </span>
                 </button>
                 <p class="task-intent">{{ task.intent }}</p>
-
-                <button
-                  v-if="getTraceForTask(task.id)"
-                  type="button"
-                  class="task-trace-link"
-                  @click.stop="openTraceForTask(task.id)"
-                >
-                  查看 Trace
-                  <span>
-                    {{ getTraceForTask(task.id)?.status }}
-                  </span>
-                </button>
+                <span class="task-evidence-count">
+                  {{ task.evidenceCount ?? task.sourceItems.length }} 条 Evidence
+                </span>
               </li>
             </ul>
           </aside>
 
           <article class="task-detail" v-if="currentTask">
+            <details class="task-detail-disclosure">
+              <summary>
+                查看任务详情：{{ currentTaskTitle || "当前任务" }}
+              </summary>
+              <div class="task-detail-content">
             <header class="task-header">
               <div>
                 <h3>{{ currentTaskTitle || "当前任务" }}</h3>
@@ -1868,7 +1987,21 @@
                 </p>
               </div>
               <div class="task-chip-group">
+                <span class="task-label">
+                  状态：{{ formatTaskStatus(currentTask.status) }}
+                </span>
                 <span class="task-label">查询：{{ currentTaskQuery || "" }}</span>
+                <button
+                  v-if="getTraceForTask(currentTask.id)"
+                  type="button"
+                  class="task-trace-link"
+                  @click.stop="openTraceForTask(currentTask.id)"
+                >
+                  查看 Trace
+                  <span>
+                    {{ formatTaskStatus(getTraceForTask(currentTask.id)?.status || "") }}
+                  </span>
+                </button>
                 <span
                   v-if="currentTaskNoteId"
                   class="task-label note-chip"
@@ -1898,7 +2031,7 @@
               <h4>系统提示</h4>
               <ul>
                 <li v-for="(notice, idx) in currentTask.notices" :key="`${notice}-${idx}`">
-                  {{ notice }}
+                  {{ formatTaskNotice(notice, currentTask) }}
                 </li>
               </ul>
             </section>
@@ -1907,8 +2040,9 @@
               class="sources-block"
               :class="{ 'block-highlight': sourcesHighlight }"
             >
-              <h3>最新来源</h3>
+              <h3>研究证据：{{ currentTaskEvidenceCount }} 条</h3>
               <template v-if="currentTaskSources.length">
+                <h4>主要来源</h4>
                 <ul class="sources-list">
                   <li
                     v-for="(item, index) in currentTaskSources"
@@ -1923,6 +2057,19 @@
                     >
                       {{ item.title || item.url || `来源 ${index + 1}` }}
                     </a>
+                    <div
+                      v-if="item.authorityType || item.sourceType"
+                      class="source-metadata"
+                    >
+                      <span v-if="item.authorityType">
+                        Authority:
+                        {{ formatEvidenceMetadataLabel(item.authorityType) }}
+                      </span>
+                      <span v-if="item.sourceType">
+                        Category:
+                        {{ formatEvidenceMetadataLabel(item.sourceType) }}
+                      </span>
+                    </div>
                     <div v-if="item.snippet || item.raw" class="source-tooltip">
                       <p v-if="item.snippet">{{ item.snippet }}</p>
                       <p v-if="item.raw" class="muted-text">{{ item.raw }}</p>
@@ -1930,19 +2077,19 @@
                   </li>
                 </ul>
               </template>
-              <p v-else class="muted">暂无可用来源</p>
+              <p v-else class="muted">暂无可用研究证据</p>
             </section>
 
-            <section
-              class="summary-block"
+            <details
+              class="summary-block task-summary-disclosure"
               :class="{ 'block-highlight': summaryHighlight }"
             >
-              <h3>任务总结</h3>
+              <summary>查看任务总结</summary>
               <div
                 class="markdown-body"
-                v-html="renderMarkdown(currentTaskSummary || '暂无可用信息')"
+                v-html="renderMarkdown(currentTaskSummaryDisplay)"
               ></div>
-            </section>
+            </details>
 
             <section
               class="tools-block"
@@ -1993,6 +2140,8 @@
                 </li>
               </ul>
             </section>
+              </div>
+            </details>
           </article>
 
           <article class="task-detail" v-else>
@@ -2035,7 +2184,7 @@ import {
   type ResearchReplayTaskResponse,
   type TraceDetailResponse
 } from "./services/api";
-import { computed, onBeforeUnmount, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
@@ -2063,6 +2212,9 @@ interface SourceItem {
   url: string;
   snippet: string;
   raw: string;
+  backend?: string;
+  sourceType?: string;
+  authorityType?: string;
 }
 
 interface ToolCallLog {
@@ -2085,6 +2237,9 @@ interface TodoTaskView {
   summary: string;
   sourcesSummary: string;
   sourceItems: SourceItem[];
+  evidenceCount: number | null;
+  summaryStatus: "available" | "failed" | "unavailable" | null;
+  summaryErrorType: string | null;
   notices: string[];
   noteId: string | null;
   notePath: string | null;
@@ -2098,8 +2253,10 @@ const form = reactive({
 
 const loading = ref(false);
 const error = ref("");
+const existingResearchId = ref("");
+const existingResearchLoading = ref(false);
+const existingResearchError = ref("");
 const progressLogs = ref<string[]>([]);
-const logsCollapsed = ref(false);
 const isExpanded = ref(false);
 
 const todoTasks = ref<TodoTaskView[]>([]);
@@ -2125,6 +2282,8 @@ const TASK_STATUS_LABEL: Record<string, string> = {
   pending: "待执行",
   in_progress: "进行中",
   completed: "已完成",
+  partial: "部分完成",
+  failed: "失败",
   skipped: "已跳过"
 };
 
@@ -2132,10 +2291,68 @@ function formatTaskStatus(status: string): string {
   return TASK_STATUS_LABEL[status] ?? status;
 }
 
+function formatEvidenceMetadataLabel(
+  value: string | null | undefined
+): string {
+  const normalized = (value || "").trim();
+
+  if (!normalized || normalized.toUpperCase() === "UNKNOWN") {
+    return "Unknown";
+  }
+
+  return normalized
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
+}
+
 const totalTasks = computed(() => todoTasks.value.length);
 const completedTasks = computed(() =>
   todoTasks.value.filter((task) => task.status === "completed").length
 );
+const partialTasks = computed(() =>
+  todoTasks.value.filter((task) => task.status === "partial").length
+);
+const failedTasks = computed(() =>
+  todoTasks.value.filter((task) => task.status === "failed").length
+);
+const pendingTasks = computed(() =>
+  todoTasks.value.filter((task) => task.status === "pending").length
+);
+const inProgressTasks = computed(() =>
+  todoTasks.value.filter((task) => task.status === "in_progress").length
+);
+const skippedTasks = computed(() =>
+  todoTasks.value.filter((task) => task.status === "skipped").length
+);
+const executedTasks = computed(
+  () => completedTasks.value + partialTasks.value + failedTasks.value
+);
+const taskProgressText = computed(() => {
+  const statusCounts = [
+    completedTasks.value ? `${completedTasks.value} 已完成` : "",
+    partialTasks.value ? `${partialTasks.value} 部分完成` : "",
+    failedTasks.value ? `${failedTasks.value} 失败` : "",
+    inProgressTasks.value ? `${inProgressTasks.value} 进行中` : "",
+    pendingTasks.value ? `${pendingTasks.value} 待执行` : "",
+    skippedTasks.value ? `${skippedTasks.value} 已跳过` : ""
+  ].filter(Boolean);
+
+  return `${executedTasks.value} 个任务已执行${
+    statusCounts.length ? ` · ${statusCounts.join(" · ")}` : ""
+  }`;
+});
+const evidenceAuthoritySummary = computed(() => {
+  const labels = todoTasks.value
+    .flatMap((task) => task.sourceItems)
+    .map((source) => formatEvidenceMetadataLabel(source.authorityType))
+    .filter((label) => label !== "Unknown");
+  const uniqueLabels = Array.from(new Set(labels));
+
+  return uniqueLabels.length
+    ? uniqueLabels.slice(0, 4).join("、")
+    : "Unknown";
+});
 
 const currentTask = computed(() => {
   if (activeTaskId.value !== null) {
@@ -2145,7 +2362,26 @@ const currentTask = computed(() => {
 });
 
 const currentTaskSources = computed(() => currentTask.value?.sourceItems ?? []);
-const currentTaskSummary = computed(() => currentTask.value?.summary ?? "");
+const currentTaskEvidenceCount = computed(
+  () => currentTask.value?.evidenceCount ?? currentTaskSources.value.length
+);
+const currentTaskSummaryDisplay = computed(() => {
+  const task = currentTask.value;
+
+  if (!task) {
+    return "";
+  }
+
+  if (!taskHasSummaryFailure(task) && task.summary.trim()) {
+    return task.summary;
+  }
+
+  if (currentTaskEvidenceCount.value > 0) {
+    return "任务摘要暂不可用；该任务的研究证据已保留，请查看上方主要来源或高级详情中的证据详情。";
+  }
+
+  return "暂无可用研究证据";
+});
 const currentTaskTitle = computed(() => currentTask.value?.title ?? "");
 const currentTaskIntent = computed(() => currentTask.value?.intent ?? "");
 const currentTaskQuery = computed(() => currentTask.value?.query ?? "");
@@ -2154,6 +2390,32 @@ const currentTaskNotePath = computed(() => currentTask.value?.notePath ?? "");
 const currentTaskToolCalls = computed(
   () => currentTask.value?.toolCalls ?? []
 );
+
+function formatTaskNotice(
+  notice: string,
+  task: TodoTaskView
+): string {
+  if (!notice.startsWith("summarization_failed:")) {
+    return notice;
+  }
+
+  const rawReason = task.summaryErrorType || notice.split(":", 2)[1];
+  const reason = rawReason === "rate_limited"
+    ? "provider rate limit"
+    : "provider error";
+
+  if ((task.evidenceCount ?? task.sourceItems.length) > 0) {
+    return `摘要生成阶段受到 ${reason}，但搜索结果与证据已保留。`;
+  }
+
+  return `摘要暂不可用（${reason}）。`;
+}
+
+function taskHasSummaryFailure(task: TodoTaskView): boolean {
+  return task.summaryStatus === "failed" || task.notices.some(
+    (notice) => notice.startsWith("summarization_failed:")
+  );
+}
 
 const pulse = (flag: typeof summaryHighlight) => {
   flag.value = false;
@@ -2450,6 +2712,8 @@ const activeTraceId = ref<string | null>(null);
 const activeTraceDetail = ref<TraceDetailResponse | null>(null);
 const traceLoading = ref(false);
 const traceError = ref("");
+const advancedAuditRef = ref<HTMLDetailsElement | null>(null);
+const traceInspectorRef = ref<HTMLElement | null>(null);
 
 const researchClaims = ref<ClaimResponse[]>([]);
 const activeClaimId = ref<string | null>(null);
@@ -2498,15 +2762,17 @@ async function openTraceForTask(taskId: number): Promise<void> {
     return;
   }
 
+  if (advancedAuditRef.value) {
+    advancedAuditRef.value.open = true;
+  }
+
+  await nextTick();
   await selectTrace(trace.trace_id);
 
-  requestAnimationFrame(() => {
-    document
-      .getElementById("trace-inspector")
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
+  await nextTick();
+  traceInspectorRef.value?.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
   });
 }
 
@@ -2918,16 +3184,7 @@ async function loadResearchReplay(
       targetResearchId
     );
 
-    researchReplay.value = replay;
-
-    await Promise.all([
-      loadCurrentVersionDiff(
-        replay
-      ),
-      loadResearchEvolution(
-        replay.research_id
-      )
-    ]);
+    await applyResearchReplay(replay);
   } catch (err) {
     researchReplay.value = null;
 
@@ -2937,6 +3194,155 @@ async function loadResearchReplay(
         : "加载 Research Replay 失败";
   } finally {
     replayLoading.value = false;
+  }
+}
+
+async function applyResearchReplay(
+  replay: ResearchReplayResponse
+): Promise<void> {
+  researchReplay.value = replay;
+
+  await Promise.all([
+    loadCurrentVersionDiff(replay),
+    loadResearchEvolution(replay.research_id)
+  ]);
+}
+
+function presentReplayTask(
+  replay: ResearchReplayResponse,
+  task: ResearchReplayTaskResponse
+): { title: string; intent: string } {
+  const decision = replay.decision;
+  const iterations = decision?.adaptive_research_state?.iterations || [];
+  let gapId: string | undefined;
+
+  for (const iteration of iterations) {
+    const taskIndex = (iteration.task_ids || []).indexOf(task.task_id);
+    if (taskIndex >= 0) {
+      gapId = (iteration.gap_ids || [])[taskIndex];
+      break;
+    }
+  }
+
+  if (gapId && decision?.case && decision.research_analysis) {
+    const gap = (decision.research_analysis.research_gaps || []).find(
+      (item) => item.gap_id === gapId
+    );
+    const candidate = decision.case.candidates.find(
+      (item) => item.candidate_id === gap?.candidate_id
+    );
+    const criterion = (decision.case.criteria || []).find(
+      (item) => item.criterion_id === gap?.criterion_id
+    );
+
+    if (candidate && criterion) {
+      const criterionLabel = criterion.name === "事务一致性能力"
+        ? "事务一致性"
+        : criterion.name;
+      return {
+        title: `补充研究：${candidate.name} ${criterionLabel}`,
+        intent: `补充验证 ${candidate.name} 在${criterion.name}方面的相关证据。`
+      };
+    }
+  }
+
+  const containsInternalWording =
+    /^Follow-up research:/i.test(task.title) ||
+    /missing_evidence|gap_[a-z0-9_-]+|No evidence signals exist/i.test(
+      task.intent
+    );
+
+  if (containsInternalWording) {
+    return {
+      title: "补充研究任务",
+      intent: "补充收集当前决策仍缺少的证据。"
+    };
+  }
+
+  return { title: task.title, intent: task.intent };
+}
+
+function hydrateExecutionFromReplay(
+  replay: ResearchReplayResponse
+): void {
+  form.topic = replay.research_topic;
+  form.searchApi = "";
+  reportMarkdown.value = replay.report_markdown || "";
+
+  todoTasks.value = replay.tasks.map((task) => {
+    const presentation = presentReplayTask(replay, task);
+    return {
+      id: task.task_id,
+      title: presentation.title,
+      intent: presentation.intent,
+      query: task.query,
+      status: task.status,
+      summary: task.summary || "",
+      sourcesSummary: "",
+      sourceItems: task.sources.map((source) => ({
+        title: source.source_title || source.source_url || "Untitled source",
+        url: source.source_url || "",
+        snippet: "",
+        raw: "",
+        backend: source.backend,
+        sourceType: source.source_type,
+        authorityType: source.authority_type
+      })),
+      evidenceCount: task.evidence_count,
+      summaryStatus: task.summary_status,
+      summaryErrorType: task.summary_error_type,
+      notices: task.notices || [],
+      noteId: null,
+      notePath: null,
+      toolCalls: []
+    };
+  });
+  activeTaskId.value = todoTasks.value[0]?.id ?? null;
+
+  progressLogs.value = [
+    `已只读加载持久化研究：${replay.research_id}`,
+    `已恢复 ${replay.task_count} 个任务、${replay.trace_count} 条 Trace、${replay.evidence_count} 条 Evidence 与 ${replay.claim_count} 条 Claim`
+  ];
+}
+
+async function loadExistingResearch(): Promise<void> {
+  if (existingResearchLoading.value) {
+    return;
+  }
+
+  const targetResearchId = existingResearchId.value.trim();
+
+  if (!targetResearchId) {
+    existingResearchError.value = "请输入 Research ID";
+    return;
+  }
+
+  existingResearchLoading.value = true;
+  existingResearchError.value = "";
+
+  try {
+    const replay = await getResearchReplay(targetResearchId);
+
+    resetWorkflowState();
+    error.value = "";
+    researchId.value = replay.research_id;
+    hydrateExecutionFromReplay(replay);
+    isExpanded.value = true;
+
+    await Promise.all([
+      applyResearchReplay(replay),
+      loadResearchTraces(replay.research_id),
+      loadResearchClaims(replay.research_id)
+    ]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    existingResearchError.value = message.includes(
+      "Research run not found"
+    )
+      ? "Research not found"
+      : "Unable to load persisted research";
+  } finally {
+    existingResearchLoading.value = false;
   }
 }
 
@@ -3077,6 +3483,9 @@ function resetWorkflowState() {
   progressLogs.value = [];
   researchId.value = null;
   researchReplay.value = null;
+  researchVersionDiff.value = null;
+  researchEvolution.value = null;
+  expandedEvolutionSteps.value = new Set();
   replayError.value = "";
   executionTraces.value = [];
   activeTraceId.value = null;
@@ -3094,7 +3503,6 @@ function resetWorkflowState() {
   sourcesHighlight.value = false;
   reportHighlight.value = false;
   toolHighlight.value = false;
-  logsCollapsed.value = false;
 }
 
 function findTask(taskId: unknown): TodoTaskView | undefined {
@@ -3209,6 +3617,9 @@ const handleSubmit = async () => {
               summary: "",
               sourcesSummary: "",
               sourceItems: [],
+              evidenceCount: null,
+              summaryStatus: null,
+              summaryErrorType: null,
               notices: [],
               noteId,
               notePath,
@@ -3647,6 +4058,57 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 
+.persisted-loader {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.persisted-loader-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.persisted-loader-heading h2 {
+  margin: 0;
+  color: #334155;
+  font-size: 15px;
+}
+
+.persisted-loader-heading p {
+  margin-top: 4px;
+}
+
+.read-only-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.persisted-loader-form {
+  display: flex;
+  gap: 10px;
+}
+
+.persisted-loader-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -3782,6 +4244,68 @@ select:focus {
   gap: 18px;
 }
 
+.panel-result > .status-bar { order: 0; }
+.panel-result > .timeline-wrapper { order: 1; }
+.panel-result > .tasks-section { order: 2; }
+.panel-result > .report-block { order: 3; }
+.panel-result > .evidence-overview { order: 4; }
+.panel-result > .advanced-audit { order: 5; }
+
+.evidence-overview,
+.advanced-audit {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.evidence-overview > summary,
+.advanced-audit > summary,
+.task-detail-disclosure > summary,
+.task-summary-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.evidence-overview > summary strong,
+.advanced-audit > summary small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.evidence-overview-content,
+.advanced-audit-content {
+  padding: 0 18px 18px;
+}
+
+.evidence-overview-content p {
+  margin: 8px 0 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.advanced-audit-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.advanced-timeline {
+  padding: 18px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.advanced-timeline h3 {
+  margin: 0 0 14px;
+}
+
 .status-bar {
   display: flex;
   align-items: center;
@@ -3914,10 +4438,14 @@ select:focus {
 }
 
 .tasks-section {
-  display: grid;
-  grid-template-columns: 280px 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
-  align-items: start;
+}
+
+.current-research-label {
+  color: #1e293b;
+  font-size: 15px;
 }
 
 .decision-panel {
@@ -4142,14 +4670,15 @@ select:focus {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
 }
 
 .task-item {
   border-radius: 14px;
   border: 1px solid transparent;
+  padding-bottom: 10px;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
@@ -4210,6 +4739,16 @@ select:focus {
   color: #15803d;
 }
 
+.task-status.partial {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.task-status.failed {
+  background: rgba(248, 113, 113, 0.18);
+  color: #b91c1c;
+}
+
 .task-status.skipped {
   background: rgba(248, 113, 113, 0.18);
   color: #b91c1c;
@@ -4220,17 +4759,47 @@ select:focus {
   padding: 0 14px 12px 14px;
   font-size: 13px;
   color: #64748b;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.task-evidence-count {
+  display: block;
+  padding: 0 14px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .task-detail {
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 18px;
-  padding: 22px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
   box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.5);
+}
+
+.task-detail-disclosure > summary,
+.task-summary-disclosure > summary {
+  list-style: none;
+}
+
+.task-detail-disclosure > summary::-webkit-details-marker,
+.task-summary-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-detail-content {
+  padding: 0 22px 22px;
+}
+
+.task-summary-disclosure > summary {
+  padding: 0 0 12px;
 }
 
 .task-header {
@@ -4604,6 +5173,12 @@ select:focus {
   letter-spacing: 0.02em;
 }
 
+.sources-block h4 {
+  margin: 0 0 10px;
+  color: #475569;
+  font-size: 13px;
+}
+
 .sources-list {
   list-style: none;
   margin: 0;
@@ -4636,6 +5211,14 @@ select:focus {
 
 .source-link:hover {
   color: #0f172a;
+}
+
+.source-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .source-tooltip {
@@ -4820,6 +5403,12 @@ select:focus {
   font-weight: 700;
   margin: 0;
   color: #1f2937;
+}
+
+.sidebar-brand p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .back-btn {
@@ -5613,6 +6202,14 @@ select:focus {
   font-size: 10px;
 }
 
+.evidence-authority-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+
 .evidence-card h5 {
   margin: 12px 0 6px;
   color: #1e293b;
@@ -5820,6 +6417,7 @@ select:focus {
 .markdown-body {
   line-height: 1.75;
   color: #1f2937;
+  overflow-x: auto;
   overflow-wrap: anywhere;
 }
 
@@ -5877,6 +6475,40 @@ select:focus {
 .markdown-body :deep(a) {
   color: #2563eb;
   text-decoration: underline;
+}
+
+.markdown-body :deep(table) {
+  width: 100%;
+  min-width: 620px;
+  margin: 1em 0;
+  border-collapse: collapse;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body :deep(th) {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+.markdown-body :deep(li + li) {
+  margin-top: 0.35em;
+}
+
+.markdown-compact {
+  max-height: 5.2em;
+  overflow: hidden;
+}
+
+.markdown-compact :deep(*) {
+  margin-top: 0;
+  margin-bottom: 0.35em;
 }
 </style>
 
